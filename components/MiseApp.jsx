@@ -47,6 +47,9 @@ useEffect(() => {
 }, []);
 
   return () => subscription.unsubscribe();
+}, []);
+
+  return () => subscription.unsubscribe();
   }, []);
   
     supabase.auth.getSession().then(({ data: { session } }) => {

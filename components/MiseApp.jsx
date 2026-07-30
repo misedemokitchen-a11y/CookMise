@@ -22,8 +22,8 @@ export default function MiseApp() {
   const [user,     setUser]     = useState(null);
   const [profile,  setProfile]  = useState({ firstName: "", lastName: "", email: "", phone: "", address: "", city: "", postcode: "" });
 
-  // Listen for Supabase auth state changes (covers Google redirect return)
- useEffect(() => {
+ // Listen for Supabase auth state changes (covers Google redirect return)
+useEffect(() => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     console.log("Auth event:", event, session);
     if (event === "SIGNED_IN" && session?.user) {
@@ -42,6 +42,9 @@ export default function MiseApp() {
       setLoggedIn(true);
     }
   });
+
+  return () => subscription.unsubscribe();
+}, []);
 
   return () => subscription.unsubscribe();
   }, []);

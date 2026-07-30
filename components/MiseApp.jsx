@@ -45,12 +45,6 @@ useEffect(() => {
 
   return () => subscription.unsubscribe();
 }, []);
-
-  return () => subscription.unsubscribe();
-}, []);
-
-  return () => subscription.unsubscribe();
-  }, []);
   
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log("Initial session:", session);

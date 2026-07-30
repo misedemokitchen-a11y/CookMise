@@ -6,4 +6,3 @@ const MiseApp = dynamic(() => import("@/components/MiseApp"), { ssr: false });
 export default function Page() {
   return <MiseApp />;
 }
-

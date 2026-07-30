@@ -1,0 +1,119 @@
+// ── Recipe schema defaults ────────────────────────────────────────────────────
+// Adding a new field means one line here — every recipe gets it automatically.
+const RECIPE_DEFAULTS = {
+  cuisine:    null,
+  chef:       null,
+  course:     null,
+  mood:       null,
+  difficulty: null,
+  dietary:    null,
+};
+
+const rawRecipes = [
+  {
+    id: 1,
+    name: "Tagliatelle Bolognese",
+    subtitle: "The authentic Emilian ragù",
+    cuisine: "Italian",
+    emoji: "🍝",
+    time: 210,
+    servings: 4,
+    calories: 620,
+    rating: 4.9,
+    price: 22.00,
+    course: "Pasta",
+    mood: "Comfort",
+    difficulty: "Medium",
+    color: "#FFF0E8",
+    img: "https://images.unsplash.com/photo-1551892374-ecf8754cf8b0?w=400&h=300&fit=crop",
+    ingredients: [
+      { name: "Tagliatelle", qty: "400g", emoji: "🍝", img: "https://images.unsplash.com/photo-1551462147-ff29053bfc14?w=96&h=96&fit=crop" },
+      { name: "Beef mince", qty: "300g", emoji: "🥩", img: "https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=96&h=96&fit=crop" },
+      { name: "Pork mince", qty: "200g", emoji: "🥩", img: "https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=96&h=96&fit=crop" },
+      { name: "Pancetta", qty: "100g", emoji: "🥓", img: "https://images.unsplash.com/photo-1528607929212-2636ec44253e?w=96&h=96&fit=crop" },
+      { name: "White wine", qty: "150ml", emoji: "🍷", img: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=96&h=96&fit=crop" },
+      { name: "Whole milk", qty: "100ml", emoji: "🥛", img: "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=96&h=96&fit=crop" },
+      { name: "Tomato passata", qty: "200ml", emoji: "🍅", img: "https://images.unsplash.com/photo-1546470427-1ec4b6e66891?w=96&h=96&fit=crop" },
+      { name: "Carrot, celery & onion", qty: "1 each", emoji: "🥕", img: "https://images.unsplash.com/photo-1590868309235-ea34bed7bd7f?w=96&h=96&fit=crop" },
+    ],
+    steps: [
+      { title: "Soften the soffritto", desc: "Finely dice the carrot, celery, and onion. Cook in butter and olive oil over low heat for 15–20 minutes until completely soft and sweet. Do not brown.", time: "20 min" },
+      { title: "Brown the meat", desc: "Add the pancetta and cook until the fat renders. Add the beef and pork mince in batches and brown well, breaking up any lumps. Season generously.", time: "15 min" },
+      { title: "Add wine & milk", desc: "Pour in the white wine and let it evaporate completely. Add the milk and simmer until absorbed. This step tenderises the meat and adds richness.", time: "15 min" },
+      { title: "Add tomato & slow cook", desc: "Add the passata, stir well, then reduce to the lowest possible heat. Partially cover and cook for at least 2 hours, stirring occasionally. The ragù should barely bubble.", time: "120 min" },
+      { title: "Cook the pasta & serve", desc: "Cook tagliatelle in heavily salted boiling water until al dente. Reserve a cup of pasta water. Toss pasta with the ragù, adding pasta water to loosen if needed. Never use spaghetti.", time: "10 min" },
+    ],
+  },
+  {
+    id: 2,
+    name: "Spaghetti alla Carbonara",
+    subtitle: "Massimo Bottura's Osteria Gucci",
+    cuisine: "Italian",
+    emoji: "🍝",
+    time: 25,
+    servings: 4,
+    calories: 680,
+    rating: 5.0,
+    price: 24.00,
+    course: "Pasta",
+    mood: "Classic",
+    difficulty: "Medium",
+    chef: "Massimo Bottura",
+    renowned: true,
+    color: "#FFF8E8",
+    img: "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&h=300&fit=crop",
+    ingredients: [
+      { name: "Spaghetti, bucatini or rigatoni", qty: "360g", emoji: "🍝", img: "https://images.unsplash.com/photo-1551462147-ff29053bfc14?w=96&h=96&fit=crop" },
+      { name: "Egg yolks", qty: "6", emoji: "🥚", img: "https://images.unsplash.com/photo-1518569656558-1f25e69d2fd4?w=96&h=96&fit=crop" },
+      { name: "Guanciale, cut into lardons", qty: "200g", emoji: "🥩", img: "https://images.unsplash.com/photo-1528607929212-2636ec44253e?w=96&h=96&fit=crop" },
+      { name: "Pecorino Romano, grated", qty: "200g", emoji: "🧀", img: "https://images.unsplash.com/photo-1559561853-08451507cbe7?w=96&h=96&fit=crop" },
+      { name: "Parmigiano Reggiano, grated", qty: "200g", emoji: "🧀", img: "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=96&h=96&fit=crop" },
+      { name: "Salt & black pepper", qty: "to taste", emoji: "🧂", img: "https://images.unsplash.com/photo-1518110925495-5fe2fda0442c?w=96&h=96&fit=crop" },
+    ],
+    steps: [
+      { title: "Make the egg & cheese base", desc: "Put the egg yolks and half the pecorino Romano and Parmigiano Reggiano in a large stainless-steel bowl. Use a fork to mix well into a thick paste.", time: "3 min" },
+      { title: "Crisp the guanciale", desc: "Heat the guanciale in a sauté pan over medium-high heat until it crisps and renders its fat. Do not drain off the fat — it is essential to the sauce.", time: "8 min" },
+      { title: "Cook the pasta", desc: "Cook the pasta in generously salted boiling water according to the package instructions until al dente. Before draining, add one generous spoonful of starchy pasta cooking water into the bowl with the egg yolk mixture and stir well.", time: "10 min" },
+      { title: "Bring it together", desc: "Toss the drained pasta and the crispy guanciale (with all its fat) into the bowl with the yolk mixture. Add the remaining pecorino Romano and Parmigiano Reggiano. Keep mixing vigorously — the residual heat of the pasta will cook the egg yolks into a glossy, creamy sauce. No cream, ever.", time: "3 min" },
+      { title: "Season & serve", desc: "Season very generously with freshly cracked black pepper. Serve immediately.", time: "1 min" },
+    ],
+  },
+];
+
+export const recipes = rawRecipes.map(r => ({ ...RECIPE_DEFAULTS, ...r }));
+
+// ── Moods ─────────────────────────────────────────────────────────────────────
+export const moods = [
+  { label: "Quick & Easy", emoji: "⚡" },
+  { label: "Healthy",      emoji: "🌿" },
+  { label: "Comfort",      emoji: "🍝" },
+  { label: "Impress",      emoji: "✨" },
+];
+
+// ── Cuisine / category cards shown in Explore ─────────────────────────────────
+// matchField — which recipe field to match this card's label against
+export const allCuisines = [
+  { label: "Dessert",       emoji: "🍰", desc: "Sweet treats & indulgences", matchField: "cuisine" },
+  { label: "Italian",       emoji: "🍝", desc: "Comforting classics",         matchField: "cuisine" },
+  { label: "Mexican",       emoji: "🌮", desc: "Bold & vibrant flavours",     matchField: "cuisine" },
+  { label: "Japanese",      emoji: "🍜", desc: "Umami-rich & refined",        matchField: "cuisine" },
+  { label: "Mediterranean", emoji: "🫒", desc: "Fresh & sun-drenched",        matchField: "cuisine" },
+  { label: "British",       emoji: "🫖", desc: "Classic comfort & heritage",  matchField: "cuisine" },
+  { label: "French",        emoji: "🥐", desc: "Elegance on a plate",         matchField: "cuisine" },
+  { label: "Pasta",         emoji: "🍝", desc: "From ragù to carbonara",      matchField: "cuisine" },
+];
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+export const stores = [
+  { name: "Whole Foods Market", color: "#2E7D32", price: 18.40, lat: 40.7397, lng: -74.0045, address: "270 Greenwich St, New York, NY" },
+  { name: "Trader Joe's",       color: "#D32F2F", price: 15.10, lat: 40.7421, lng: -74.0001, address: "675 6th Ave, New York, NY" },
+  { name: "Fairway Market",     color: "#E65100", price: 14.80, lat: 40.7570, lng: -73.9893, address: "2328 12th Ave, New York, NY" },
+  { name: "Wegmans",            color: "#1565C0", price: 16.20, lat: 40.7484, lng: -73.9967, address: "505 E 33rd St, New York, NY" },
+  { name: "Key Food",           color: "#558B2F", price: 12.90, lat: 40.7282, lng: -73.9942, address: "169 Ave B, New York, NY" },
+  { name: "Morton Williams",    color: "#6A1B9A", price: 17.50, lat: 40.7614, lng: -73.9776, address: "1372 3rd Ave, New York, NY" },
+];
+
+// ── Recipe matching helper ────────────────────────────────────────────────────
+// Single source of truth for whether a recipe belongs to a cuisine/category card
+export const recipeMatchesCuisine = (recipe, card) =>
+  recipe[card.matchField]?.toLowerCase() === card.label.toLowerCase();

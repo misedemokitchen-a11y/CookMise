@@ -24,9 +24,12 @@ export default function MiseApp() {
 
   // Listen for Supabase auth state changes (covers Google redirect return)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) { setUser(session.user); setLoggedIn(true); }
-    });
+  setTimeout(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        console.log("Delayed session check:", session);
+        if (session?.user) { setUser(session.user); setLoggedIn(true); }
+      });
+    }, 500);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { setUser(session.user); setLoggedIn(true); }
       else { setUser(null); setLoggedIn(false); }

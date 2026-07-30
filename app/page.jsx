@@ -1,7 +1,4 @@
-"use client";
-import dynamic from "next/dynamic";
-
-const MiseApp = dynamic(() => import("@/components/MiseApp"), { ssr: false });
+import MiseApp from "@/components/MiseApp";
 
 export default function Page() {
   return <MiseApp />;

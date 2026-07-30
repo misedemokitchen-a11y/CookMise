@@ -10,9 +10,13 @@ export function LoginScreen({ onLogin }) {
 
   const handleGoogleSignIn = async () => {
     setGoogle(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google" });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "https://cook-mise.vercel.app/auth/callback",
+      },
+    });
     if (error) { console.error(error); setGoogle(false); }
-    // Supabase redirects to Google — on return, auth state updates automatically
   };
 
   const handleEmailSignIn = async () => {

@@ -2,7 +2,7 @@ const KROGER_CLIENT_ID     = process.env.KROGER_CLIENT_ID;
 const KROGER_CLIENT_SECRET = process.env.KROGER_CLIENT_SECRET;
 const KROGER_BASE          = "https://api.kroger.com/v1";
 
-async function getToken(scope = "product.compact locations.compact") {
+async function getToken() {
   const credentials = Buffer.from(`${KROGER_CLIENT_ID}:${KROGER_CLIENT_SECRET}`).toString("base64");
   const res = await fetch(`${KROGER_BASE}/connect/oauth2/token`, {
     method: "POST",
@@ -10,10 +10,9 @@ async function getToken(scope = "product.compact locations.compact") {
       "Content-Type":  "application/x-www-form-urlencoded",
       "Authorization": `Basic ${credentials}`,
     },
-    body: `grant_type=client_credentials&scope=${scope}`,
+    body: "grant_type=client_credentials&scope=product.compact",
   });
   const data = await res.json();
-  console.log("Kroger token response:", JSON.stringify(data));
   return data.access_token;
 }
 

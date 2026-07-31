@@ -45,16 +45,17 @@ export async function GET(request) {
   }
 
   // ── Find nearby Kroger stores ─────────────────────────────────────────────
-  if (type === "stores") {
-    const lat = searchParams.get("lat");
-    const lng = searchParams.get("lng");
-    const res = await fetch(
-      `${KROGER_BASE}/locations?filter.latLong.near=${lat},${lng}&filter.radiusInMiles=10&filter.limit=5`,
-      { headers: { "Authorization": `Bearer ${token}` } }
-    );
-    const data = await res.json();
-    return Response.json(data);
-  }
+if (type === "stores") {
+  const lat   = searchParams.get("lat");
+  const lng   = searchParams.get("lng");
+  const token = await getToken();
+  const url   = `${KROGER_BASE}/locations?filter.latLong.near=${lat},${lng}&filter.radiusInMiles=10&filter.limit=5`;
+  const res   = await fetch(url, {
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+  const data  = await res.json();
+  return Response.json({ token: token?.slice(0, 20), url, data });
+}
 
   // ── Search for a product at a specific store ──────────────────────────────
   if (type === "product") {

@@ -1,12 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
-import { haversine } from "@/lib/utils";
-import { stores } from "@/data/recipes";
-
 
 // ── SwipeableRecipeCard ───────────────────────────────────────────────────────
-function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe, checked, toggleCheck }) {
+function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe, checked, toggleCheck, krogerResults }) {
   const [swipeX,    setSwipeX]    = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -39,8 +36,8 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
       )}
       <div
         onTouchStart={(e) => { touchStartRef.current = e.touches[0].clientX; setIsSwiping(true); }}
-        onTouchMove={(e)  => { if (touchStartRef.current === null) return; const dx = e.touches[0].clientX - touchStartRef.current; if (dx < 0) setSwipeX(Math.max(dx, -THRESHOLD - 20)); }}
-        onTouchEnd={()    => { setIsSwiping(false); if (swipeX < -THRESHOLD) removeRecipe(idx); else setSwipeX(0); touchStartRef.current = null; }}
+        onTouchMove={(e) => { if (touchStartRef.current === null) return; const dx = e.touches[0].clientX - touchStartRef.current; if (dx < 0) setSwipeX(Math.max(dx, -THRESHOLD - 20)); }}
+        onTouchEnd={() => { setIsSwiping(false); if (swipeX < -THRESHOLD) removeRecipe(idx); else setSwipeX(0); touchStartRef.current = null; }}
         style={{ transform: `translateX(${swipeX}px)`, transition: isSwiping ? "none" : "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)", borderRadius: 20, overflow: "hidden", border: `1px solid ${BORDER}`, background: CARD, userSelect: "none" }}>
 
         <div onClick={() => { if (swipeX === 0) toggleExpand(idx); }} style={{ background: "#2D4A3E", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
@@ -55,14 +52,22 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
         {expanded && (
           <div>
             {recipe.ingredients?.map((ing, i) => {
-              const key       = `${recipe.id}-${i}`;
+              const key = `${recipe.id}-${i}`;
               const isChecked = !!checked[key];
+              const kroger = krogerResults?.[ing.name];
               return (
                 <div key={i}>
                   <div onClick={() => toggleCheck(recipe.id, i)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer" }}>
+                    {kroger?.image && (
+                      <img src={kroger.image} alt={ing.name} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: isChecked ? MUTED : TEXT, textDecoration: isChecked ? "line-through" : "none", transition: "all 0.15s ease" }}>{ing.name}</div>
-                      <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>{ing.qty}</div>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 1, display: "flex", gap: 8 }}>
+                        <span>{ing.qty}</span>
+                        {kroger?.found && kroger?.price && <span style={{ color: ACCENT2, fontWeight: 600 }}>${kroger.price}</span>}
+                        {kroger?.found === false && <span style={{ color: "#E53935" }}>Not at this store</span>}
+                      </div>
                     </div>
                     <div style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, border: `2px solid ${isChecked ? "#2D4A3E" : BORDER}`, background: isChecked ? "#2D4A3E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}>
                       {isChecked && <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -81,68 +86,83 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
 
 // ── OrderScreen ───────────────────────────────────────────────────────────────
 export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile, placeOrder, defaultAddress }) {
-  const [confirmed,      setConfirmed]      = useState(false);
-  const [selected,       setSelected]       = useState(0);
-  const [checked,        setChecked]        = useState({});
-  const [expanded,       setExpanded]       = useState({ 0: true });
-  const [deliveryAddress, setDeliveryAddress] = useState(defaultAddress ? `${defaultAddress.street}, ${defaultAddress.city}, ${defaultAddress.postcode}` : "");
-  const [editingAddress, setEditingAddress] = useState(false);
-  const [suggestions,    setSuggestions]    = useState([]);
-  const [loadingPlaces,  setLoadingPlaces]  = useState(false);
-  const [loadingStores,  setLoadingStores]  = useState(false);
-  const [userLocation,   setUserLocation]   = useState(null);
-  const [sortedStores,   setSortedStores]   = useState(stores);
+  const [confirmed,          setConfirmed]          = useState(false);
+  const [selected,           setSelected]           = useState(0);
+  const [checked,            setChecked]            = useState({});
+  const [expanded,           setExpanded]           = useState({ 0: true });
+  const [deliveryAddress,    setDeliveryAddress]    = useState(defaultAddress ? `${defaultAddress.street}, ${defaultAddress.city}, ${defaultAddress.postcode}` : "");
+  const [editingAddress,     setEditingAddress]     = useState(false);
+  const [suggestions,        setSuggestions]        = useState([]);
+  const [loadingPlaces,      setLoadingPlaces]      = useState(false);
+  const [loadingStores,      setLoadingStores]      = useState(false);
+  const [loadingIngredients, setLoadingIngredients] = useState(false);
+  const [krogerStores,       setKrogerStores]       = useState([]);
+  const [krogerResults,      setKrogerResults]      = useState({});
+  const [userCoords,         setUserCoords]         = useState(null);
   const addressInputRef = useRef(null);
   const debounceRef     = useRef(null);
 
   useEffect(() => { if (editingAddress && addressInputRef.current) addressInputRef.current.focus(); }, [editingAddress]);
-  useEffect(() => { if (deliveryAddress) fetchDrivingDistances(deliveryAddress); }, []);
+  useEffect(() => { if (deliveryAddress) findStoresAndIngredients(deliveryAddress); }, []);
 
-const fetchSuggestions = async (value) => {
-  if (!value.trim()) { setSuggestions([]); return; }
-  setLoadingPlaces(true);
-  try {
-    const res  = await fetch(`/api/places?type=autocomplete&input=${encodeURIComponent(value)}`);
-    const data = await res.json();
-    setSuggestions(data.predictions?.map(p => ({ place_id: p.place_id, description: p.description })) || []);
-  } catch { setSuggestions([]); }
-  setLoadingPlaces(false);
-};
-
-const fetchDrivingDistances = async (address) => {
-  setLoadingStores(true);
-  try {
-    const destinations = stores.map(s => s.address).join("|");
-    const res  = await fetch(`/api/places?type=distance&origins=${encodeURIComponent(address)}&destinations=${encodeURIComponent(destinations)}`);
-    const data = await res.json();
-    if (data.rows?.[0]?.elements) {
-      const withDist = stores.map((s, i) => {
-        const el = data.rows[0].elements[i];
-        const ok = el?.status === "OK";
-        return { ...s, distMiles: ok ? el.distance.value / 1609.34 : null, distLabel: ok ? el.distance.text : null, timeLabel: ok ? el.duration.text : null, drivingSecs: ok ? el.duration.value : 999999 };
-      }).sort((a, b) => a.drivingSecs - b.drivingSecs);
-      setSortedStores(withDist); setSelected(0); setUserLocation(true);
-    }
-  } catch {
+  const findStoresAndIngredients = async (address) => {
+    setLoadingStores(true);
+    setKrogerStores([]);
+    setKrogerResults({});
     try {
-      const res2 = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(address)}`);
-      const geo  = await res2.json();
-      if (geo.results?.[0]) {
-        const { lat, lng } = geo.results[0].geometry.location;
-        setUserLocation({ lat, lng });
-        const withDist = stores.map(s => ({
-          ...s,
-          distMiles: haversine(lat, lng, s.lat, s.lng),
-          distLabel: `${haversine(lat, lng, s.lat, s.lng).toFixed(1)} mi`,
-          timeLabel: `~${Math.round(20 + haversine(lat, lng, s.lat, s.lng) * 8)} min`,
-          drivingSecs: haversine(lat, lng, s.lat, s.lng) * 500
-        })).sort((a, b) => a.drivingSecs - b.drivingSecs);
-        setSortedStores(withDist); setSelected(0);
+      const geoRes  = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(address)}`);
+      const geoData = await geoRes.json();
+      if (!geoData.results?.[0]) { setLoadingStores(false); return; }
+
+      const { lat, lng } = geoData.results[0].geometry.location;
+      setUserCoords({ lat, lng });
+
+      const storeRes  = await fetch(`/api/kroger?type=stores&lat=${lat}&lng=${lng}`);
+      const storeData = await storeRes.json();
+      const stores    = storeData.data || [];
+      setKrogerStores(stores);
+      setLoadingStores(false);
+
+      if (stores.length > 0) {
+        setLoadingIngredients(true);
+        const locationId  = stores[0].locationId;
+        const ingredients = orderRecipes.flatMap(r => r.ingredients ?? []).map(i => i.name);
+        const unique      = [...new Set(ingredients)];
+
+        const results = await Promise.all(
+          unique.map(async (name) => {
+            const res     = await fetch(`/api/kroger?type=product&query=${encodeURIComponent(name)}&locationId=${locationId}`);
+            const data    = await res.json();
+            const product = data.data?.[0];
+            return [name, {
+              found: !!product,
+              name:  product?.description,
+              price: product?.items?.[0]?.price?.regular,
+              image: product?.images?.find(i => i.perspective === "front")?.sizes?.find(s => s.size === "thumbnail")?.url,
+            }];
+          })
+        );
+
+        setKrogerResults(Object.fromEntries(results));
+        setLoadingIngredients(false);
       }
-    } catch {}
-  }
-  setLoadingStores(false);
-};
+    } catch (e) {
+      console.error(e);
+      setLoadingStores(false);
+      setLoadingIngredients(false);
+    }
+  };
+
+  const fetchSuggestions = async (value) => {
+    if (!value.trim()) { setSuggestions([]); return; }
+    setLoadingPlaces(true);
+    try {
+      const res  = await fetch(`/api/places?type=autocomplete&input=${encodeURIComponent(value)}`);
+      const data = await res.json();
+      setSuggestions(data.predictions?.map(p => ({ place_id: p.place_id, description: p.description })) || []);
+    } catch { setSuggestions([]); }
+    setLoadingPlaces(false);
+  };
 
   const handleAddressChange = (value) => {
     setDeliveryAddress(value);
@@ -150,7 +170,13 @@ const fetchDrivingDistances = async (address) => {
     debounceRef.current = setTimeout(() => fetchSuggestions(value), 250);
   };
 
-  const selectSuggestion = (desc) => { setDeliveryAddress(desc); setSuggestions([]); setEditingAddress(false); fetchDrivingDistances(desc); };
+  const selectSuggestion = (desc) => {
+    setDeliveryAddress(desc);
+    setSuggestions([]);
+    setEditingAddress(false);
+    findStoresAndIngredients(desc);
+  };
+
   const handleAddressBlur = () => { setTimeout(() => { setEditingAddress(false); setSuggestions([]); }, 150); };
 
   const ingKeywords = (name) => (name || "").toLowerCase().trim().replace(/s$/, "").split(/\s+/);
@@ -174,8 +200,8 @@ const fetchDrivingDistances = async (address) => {
     });
   };
 
-  const toggleExpand  = (idx) => setExpanded(prev => ({ ...prev, [idx]: !prev[idx] }));
-  const removeRecipe  = (idx) => {
+  const toggleExpand = (idx) => setExpanded(prev => ({ ...prev, [idx]: !prev[idx] }));
+  const removeRecipe = (idx) => {
     setOrderRecipes(prev => prev.filter((_, i) => i !== idx));
     setExpanded(prev => {
       const next = {};
@@ -185,42 +211,35 @@ const fetchDrivingDistances = async (address) => {
   };
 
   const totalIngredients = orderRecipes.reduce((sum, r) => sum + (r.ingredients?.length ?? 0), 0);
-  const totalPrice       = orderRecipes.reduce((sum, r) => sum + (r.price ?? 0), 0);
-
-  const storesForOrder = sortedStores.map((s, i) => ({
-    ...s,
-    storeTotal: (totalPrice * (s.price / stores[0].price)).toFixed(2),
-    storeItems: i === 0 ? totalIngredients : Math.max(Math.floor(totalIngredients * (0.95 - i * 0.05)), Math.floor(totalIngredients * 0.6)),
-    distLabel:  s.distMiles != null ? `${s.distMiles.toFixed(1)} mi` : null,
-    timeLabel:  s.distMiles != null ? `${Math.round(20 + s.distMiles * 8)} min` : null,
-  }));
+  const foundCount       = Object.values(krogerResults).filter(r => r.found).length;
+  const krogerTotal      = Object.values(krogerResults).reduce((sum, r) => sum + (r.price || 0), 0);
+  const selectedStore    = krogerStores[selected];
 
   const handleConfirmOrder = async () => {
     await placeOrder?.({
       orderRecipes,
       ingredients:  orderRecipes.flatMap(r => r.ingredients ?? []),
       address:      deliveryAddress,
-      store:        storesForOrder[selected],
-      deliveryType: selected === 0 ? "delivery" : "pickup",
-      subtotal:     totalPrice,
-      total:        totalPrice * (selected === 0 ? 1 : 0.87),
+      store:        selectedStore?.name,
+      deliveryType: "delivery",
+      subtotal:     krogerTotal,
+      total:        krogerTotal,
     });
     setConfirmed(true);
   };
 
-  // ── Confirmed state ─────────────────────────────────────────────────────────
   if (confirmed) {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", textAlign: "center" }}>
         <div style={{ width: 80, height: 80, borderRadius: 40, background: ACCENT2 + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, marginBottom: 20 }}>✅</div>
         <h2 style={{ fontSize: 26, fontWeight: 800, color: TEXT, margin: "0 0 8px", fontFamily: "Georgia, serif" }}>Order Placed!</h2>
         <p style={{ color: MUTED, fontSize: 15, lineHeight: 1.5, margin: "0 0 28px" }}>
-          Your ingredients for {orderRecipes.length} {orderRecipes.length === 1 ? "recipe" : "recipes"} are being picked now.
+          Your ingredients for {orderRecipes.length} {orderRecipes.length === 1 ? "recipe" : "recipes"} are on their way.
         </p>
         <div style={{ background: CARD, borderRadius: 20, padding: "18px 24px", width: "100%", border: `1px solid ${BORDER}`, marginBottom: 20 }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: ACCENT2, marginBottom: 4 }}>45 min</div>
           <div style={{ fontSize: 13, color: MUTED }}>Estimated arrival</div>
-          <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>📍 {storesForOrder[selected]?.name}</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>📍 {selectedStore?.name}</div>
           <div style={{ marginTop: 6, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
             {orderRecipes.map(r => (
               <span key={r.id} style={{ fontSize: 13, background: ACCENT2 + "15", color: ACCENT2, borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}>{r.emoji} {r.name}</span>
@@ -234,11 +253,8 @@ const fetchDrivingDistances = async (address) => {
     );
   }
 
-  // ── Main order view ─────────────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 130 }}>
-
-      {/* Empty state */}
       {orderRecipes.length === 0 ? (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "120px 40px 0", textAlign: "center" }}>
           <div style={{ fontSize: 56, marginBottom: 20 }}>🛒</div>
@@ -271,7 +287,6 @@ const fetchDrivingDistances = async (address) => {
               {!editingAddress && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4 }}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
             </div>
 
-            {/* Autocomplete */}
             {editingAddress && (suggestions.length > 0 || loadingPlaces) && (
               <div style={{ position: "absolute", top: "calc(100% + 8px)", left: -20, right: -20, background: CARD, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 200, overflow: "hidden" }}>
                 {loadingPlaces && !suggestions.length
@@ -294,46 +309,79 @@ const fetchDrivingDistances = async (address) => {
         {/* Recipe cards */}
         <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
           {orderRecipes.map((recipe, idx) => (
-            <SwipeableRecipeCard key={recipe.id} recipe={recipe} idx={idx} expanded={!!expanded[idx]} toggleExpand={toggleExpand} removeRecipe={removeRecipe} checked={checked} toggleCheck={toggleCheck} />
+            <SwipeableRecipeCard key={recipe.id} recipe={recipe} idx={idx} expanded={!!expanded[idx]} toggleExpand={toggleExpand} removeRecipe={removeRecipe} checked={checked} toggleCheck={toggleCheck} krogerResults={krogerResults} />
           ))}
         </div>
 
-        {/* Store picker */}
-        <div style={{ padding: "0 20px", marginTop: 32 }}>
+        {/* Kroger stores */}
+        <div style={{ padding: "0 20px", marginTop: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             Nearby Stores
-            {loadingStores && <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #e0e0e0", borderTopColor: ACCENT2, animation: "spin 0.7s linear infinite" }} />}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {storesForOrder.map((store, i) => (
-              <div key={i} onClick={() => setSelected(i)} style={{ background: CARD, borderRadius: 18, padding: "14px 16px", border: `2px solid ${selected === i ? ACCENT2 : BORDER}`, cursor: "pointer" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ color: store.color, fontSize: 12 }}>●</span>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{store.name}</span>
-                      {i === 0 && userLocation && <span style={{ fontSize: 10, fontWeight: 700, color: ACCENT2, background: ACCENT2 + "15", borderRadius: 6, padding: "2px 6px" }}>Closest</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{store.distLabel ? `${store.distLabel} · Est. ${store.timeLabel}` : store.address}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 800, fontSize: 16, color: ACCENT2 }}>${store.storeTotal}</div>
-                    <div style={{ fontSize: 11, color: MUTED }}>{store.storeItems}/{totalIngredients} items</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {orderRecipes.flatMap(r => r.ingredients ?? []).slice(0, store.storeItems).map((ing, j) => (
-                    <div key={j} style={{ background: "#E8F4EA", borderRadius: 8, padding: "4px 8px", fontSize: 13 }}>{ing.emoji}</div>
-                  ))}
-                  {store.storeItems < totalIngredients && <div style={{ background: "#FFE8E8", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#C62828", fontWeight: 600 }}>✗ {totalIngredients - store.storeItems} missing</div>}
-                </div>
-              </div>
-            ))}
+            {(loadingStores || loadingIngredients) && (
+              <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #e0e0e0", borderTopColor: ACCENT2, animation: "spin 0.7s linear infinite" }} />
+            )}
           </div>
 
-          <button onClick={handleConfirmOrder} style={{ width: "100%", marginTop: 20, padding: "16px", borderRadius: 18, background: ACCENT2, color: "#fff", border: "none", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 14px ${ACCENT2}55` }}>
-            ✓ Confirm Order · ${(totalPrice * (selected === 0 ? 1 : 0.87)).toFixed(2)}
-          </button>
+          {!deliveryAddress && (
+            <div style={{ fontSize: 13, color: MUTED, padding: "12px 0" }}>Enter a delivery address to find nearby stores.</div>
+          )}
+
+          {deliveryAddress && !loadingStores && krogerStores.length === 0 && (
+            <div style={{ fontSize: 13, color: MUTED, padding: "12px 0" }}>No Kroger stores found near this address.</div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {krogerStores.map((store, i) => {
+              const distMiles = userCoords
+                ? Math.sqrt(Math.pow(store.geolocation.latitude - userCoords.lat, 2) + Math.pow(store.geolocation.longitude - userCoords.lng, 2)) * 69
+                : null;
+
+              return (
+                <div key={store.locationId} onClick={() => setSelected(i)} style={{ background: CARD, borderRadius: 18, padding: "14px 16px", border: `2px solid ${selected === i ? ACCENT2 : BORDER}`, cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{store.name}</div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                        {store.address.addressLine1}, {store.address.city}
+                        {distMiles != null && ` · ${distMiles.toFixed(1)} mi`}
+                      </div>
+                    </div>
+                    {selected === i && krogerTotal > 0 && (
+                      <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: ACCENT2 }}>${krogerTotal.toFixed(2)}</div>
+                        <div style={{ fontSize: 11, color: MUTED }}>{foundCount}/{totalIngredients} found</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {selected === i && (
+                    <div>
+                      {loadingIngredients ? (
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Checking ingredient availability…</div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                          {Object.entries(krogerResults).map(([name, result]) => (
+                            <div key={name} style={{ background: result.found ? "#E8F4EA" : "#FFE8E8", borderRadius: 8, padding: "3px 8px", fontSize: 11, color: result.found ? "#2D6A4F" : "#C62828", fontWeight: 600 }}>
+                              {result.found ? "✓" : "✗"} {name.split(" ")[0]}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {krogerStores.length > 0 && (
+            <button
+              onClick={handleConfirmOrder}
+              disabled={loadingIngredients}
+              style={{ width: "100%", marginTop: 20, padding: "16px", borderRadius: 18, background: loadingIngredients ? MUTED : ACCENT2, color: "#fff", border: "none", fontSize: 15, fontWeight: 800, cursor: loadingIngredients ? "default" : "pointer", fontFamily: "inherit", boxShadow: `0 4px 14px ${ACCENT2}55` }}>
+              {loadingIngredients ? "Finding ingredients…" : `✓ Confirm Order · $${krogerTotal.toFixed(2)}`}
+            </button>
+          )}
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </>)}

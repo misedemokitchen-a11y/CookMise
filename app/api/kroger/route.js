@@ -76,4 +76,8 @@ export async function GET(request) {
   }
 
   return Response.json({ error: "Invalid type" }, { status: 400 });
+
+  if (type === "token") {
+  return Response.json({ token });
+}
 }

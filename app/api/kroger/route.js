@@ -13,12 +13,32 @@ async function getToken(scope = "product.compact locations.compact") {
     body: `grant_type=client_credentials&scope=${scope}`,
   });
   const data = await res.json();
+  console.log("Kroger token response:", JSON.stringify(data));
   return data.access_token;
 }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const type  = searchParams.get("type");
+
+  // ── Debug token ───────────────────────────────────────────────────────────
+  if (type === "token") {
+    const tokenRes = await fetch(`${KROGER_BASE}/connect/oauth2/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${Buffer.from(`${KROGER_CLIENT_ID}:${KROGER_CLIENT_SECRET}`).toString("base64")}`,
+      },
+      body: "grant_type=client_credentials&scope=product.compact",
+    });
+    const result = await tokenRes.json();
+    return Response.json({
+      result,
+      clientIdExists: !!KROGER_CLIENT_ID,
+      secretExists:   !!KROGER_CLIENT_SECRET,
+    });
+  }
+
   const token = await getToken();
 
   if (!token) {
@@ -76,8 +96,4 @@ export async function GET(request) {
   }
 
   return Response.json({ error: "Invalid type" }, { status: 400 });
-
-  if (type === "token") {
-  return Response.json({ token });
-}
 }

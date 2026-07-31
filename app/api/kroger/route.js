@@ -54,7 +54,8 @@ if (type === "stores") {
     headers: { "Authorization": `Bearer ${token}` },
   });
   const data  = await res.json();
-  return Response.json({ token: token?.slice(0, 20), url, data });
+
+  return Response.json(data);
 }
 
   // ── Search for a product at a specific store ──────────────────────────────
@@ -96,4 +97,6 @@ if (type === "stores") {
   }
 
   return Response.json({ error: "Invalid type" }, { status: 400 });
+
+  
 }

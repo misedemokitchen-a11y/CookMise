@@ -119,7 +119,7 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
 
       const storeRes  = await fetch(`/api/kroger?type=stores&lat=${lat}&lng=${lng}`);
       const storeData = await storeRes.json();
-      const stores    = storeData.data || [];
+      const stores = storeData.data?.data || storeData.data || [];
       setKrogerStores(stores);
       setLoadingStores(false);
 

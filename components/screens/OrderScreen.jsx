@@ -4,8 +4,6 @@ import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants"
 import { haversine } from "@/lib/utils";
 import { stores } from "@/data/recipes";
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-const proxyUrl = (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
 
 // ── SwipeableRecipeCard ───────────────────────────────────────────────────────
 function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe, checked, toggleCheck }) {
@@ -100,52 +98,51 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   useEffect(() => { if (editingAddress && addressInputRef.current) addressInputRef.current.focus(); }, [editingAddress]);
   useEffect(() => { if (deliveryAddress) fetchDrivingDistances(deliveryAddress); }, []);
 
-  const fetchSuggestions = async (value) => {
-    if (!value.trim() || !GOOGLE_MAPS_API_KEY) { setSuggestions([]); return; }
-    setLoadingPlaces(true);
-    try {
-      const apiUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(value)}&types=address&key=${GOOGLE_MAPS_API_KEY}`;
-      const res    = await fetch(proxyUrl(apiUrl));
-      const outer  = await res.json();
-      const data   = JSON.parse(outer.contents);
-      setSuggestions(data.predictions?.map(p => ({ place_id: p.place_id, description: p.description })) || []);
-    } catch { setSuggestions([]); }
-    setLoadingPlaces(false);
-  };
+const fetchSuggestions = async (value) => {
+  if (!value.trim()) { setSuggestions([]); return; }
+  setLoadingPlaces(true);
+  try {
+    const res  = await fetch(`/api/places?type=autocomplete&input=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    setSuggestions(data.predictions?.map(p => ({ place_id: p.place_id, description: p.description })) || []);
+  } catch { setSuggestions([]); }
+  setLoadingPlaces(false);
+};
 
-  const fetchDrivingDistances = async (address) => {
-    if (!GOOGLE_MAPS_API_KEY) return;
-    setLoadingStores(true);
-    try {
-      const destinations = stores.map(s => encodeURIComponent(s.address)).join("|");
-      const apiUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(address)}&destinations=${destinations}&units=imperial&key=${GOOGLE_MAPS_API_KEY}`;
-      const res    = await fetch(proxyUrl(apiUrl));
-      const outer  = await res.json();
-      const data   = JSON.parse(outer.contents);
-      if (data.rows?.[0]?.elements) {
-        const withDist = stores.map((s, i) => {
-          const el = data.rows[0].elements[i];
-          const ok = el?.status === "OK";
-          return { ...s, distMiles: ok ? el.distance.value / 1609.34 : null, distLabel: ok ? el.distance.text : null, timeLabel: ok ? el.duration.text : null, drivingSecs: ok ? el.duration.value : 999999 };
-        }).sort((a, b) => a.drivingSecs - b.drivingSecs);
-        setSortedStores(withDist); setSelected(0); setUserLocation(true);
-      }
-    } catch {
-      try {
-        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-        const res2   = await fetch(proxyUrl(geoUrl));
-        const outer2 = await res2.json();
-        const geo    = JSON.parse(outer2.contents);
-        if (geo.results?.[0]) {
-          const { lat, lng } = geo.results[0].geometry.location;
-          setUserLocation({ lat, lng });
-          const withDist = stores.map(s => ({ ...s, distMiles: haversine(lat, lng, s.lat, s.lng), distLabel: `${haversine(lat, lng, s.lat, s.lng).toFixed(1)} mi`, timeLabel: `~${Math.round(20 + haversine(lat, lng, s.lat, s.lng) * 8)} min`, drivingSecs: haversine(lat, lng, s.lat, s.lng) * 500 })).sort((a, b) => a.drivingSecs - b.drivingSecs);
-          setSortedStores(withDist); setSelected(0);
-        }
-      } catch {}
+const fetchDrivingDistances = async (address) => {
+  setLoadingStores(true);
+  try {
+    const destinations = stores.map(s => s.address).join("|");
+    const res  = await fetch(`/api/places?type=distance&origins=${encodeURIComponent(address)}&destinations=${encodeURIComponent(destinations)}`);
+    const data = await res.json();
+    if (data.rows?.[0]?.elements) {
+      const withDist = stores.map((s, i) => {
+        const el = data.rows[0].elements[i];
+        const ok = el?.status === "OK";
+        return { ...s, distMiles: ok ? el.distance.value / 1609.34 : null, distLabel: ok ? el.distance.text : null, timeLabel: ok ? el.duration.text : null, drivingSecs: ok ? el.duration.value : 999999 };
+      }).sort((a, b) => a.drivingSecs - b.drivingSecs);
+      setSortedStores(withDist); setSelected(0); setUserLocation(true);
     }
-    setLoadingStores(false);
-  };
+  } catch {
+    try {
+      const res2 = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(address)}`);
+      const geo  = await res2.json();
+      if (geo.results?.[0]) {
+        const { lat, lng } = geo.results[0].geometry.location;
+        setUserLocation({ lat, lng });
+        const withDist = stores.map(s => ({
+          ...s,
+          distMiles: haversine(lat, lng, s.lat, s.lng),
+          distLabel: `${haversine(lat, lng, s.lat, s.lng).toFixed(1)} mi`,
+          timeLabel: `~${Math.round(20 + haversine(lat, lng, s.lat, s.lng) * 8)} min`,
+          drivingSecs: haversine(lat, lng, s.lat, s.lng) * 500
+        })).sort((a, b) => a.drivingSecs - b.drivingSecs);
+        setSortedStores(withDist); setSelected(0);
+      }
+    } catch {}
+  }
+  setLoadingStores(false);
+};
 
   const handleAddressChange = (value) => {
     setDeliveryAddress(value);

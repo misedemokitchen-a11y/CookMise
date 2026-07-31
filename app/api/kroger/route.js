@@ -11,7 +11,7 @@ async function getToken() {
       "Content-Type":  "application/x-www-form-urlencoded",
       "Authorization": `Basic ${credentials}`,
     },
-    body: "grant_type=client_credentials&scope=product.compact",
+    body: "grant_type=client_credentials&scope=product.compact+locations.compact",
   });
   const data = await res.json();
   return data.access_token;
@@ -26,7 +26,7 @@ export async function GET(request) {
   if (type === "stores") {
     const lat  = searchParams.get("lat");
     const lng  = searchParams.get("lng");
-    const res  = await fetch(`${KROGER_BASE}/locations?filter.lat.near=${lat}&filter.lon.near=${lng}&filter.radiusInMiles=10&filter.limit=5`, {
+    const res  = await fetch(`${KROGER_BASE}/locations?filter.latLong.near=${lat},${lng}&filter.radiusInMiles=10&filter.limit=5`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
     const data = await res.json();

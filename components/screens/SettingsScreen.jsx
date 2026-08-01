@@ -2,6 +2,10 @@
 import { useState, useRef } from "react";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
+import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
+import { supabase } from "@/lib/supabase";
+import { LocationMapPicker } from "@/components/ui/LocationMapPicker";
+
 
 // ── ProfileField helper ───────────────────────────────────────────────────────
 function ProfileField({ label, fieldKey, placeholder, type = "text", value, focused, onChange, onFocus, onBlur }) {
@@ -78,13 +82,20 @@ function DietScreen({ onBack, dietaryPrefs = {}, saveDiet }) {
 // ── parseAddressComponents ──────────────────────────────────────────────────
 // Splits a Google geocode result into street / city / postcode.
 function parseAddressComponents(result) {
-  if (!result) return { street: "", city: "", postcode: "" };
+  if (!result) return { street: "", city: "", postcode: "", lat: null, lng: null };
   const comps = result.address_components || [];
   const get = (type) => comps.find(c => c.types.includes(type))?.long_name || "";
   const street = [get("street_number"), get("route")].filter(Boolean).join(" ");
   const city = get("locality") || get("postal_town") || get("sublocality") || get("administrative_area_level_2") || "";
   const postcode = get("postal_code");
-  return { street: street || result.formatted_address || "", city, postcode };
+  const loc = result.geometry?.location || null;
+  return {
+    street: street || result.formatted_address || "",
+    city,
+    postcode,
+    lat: loc?.lat ?? null,
+    lng: loc?.lng ?? null,
+  };
 }
 
 // ── AddressAutocomplete ──────────────────────────────────────────────────────
@@ -159,18 +170,47 @@ function AddressAutocomplete({ value, onChange, onSelect, placeholder }) {
 }
 
 // ── AddAddressPanel ───────────────────────────────────────────────────────────
+// ── AddAddressPanel ───────────────────────────────────────────────────────────
 function AddAddressPanel({ onCancel, onSave }) {
-  const [label,   setLabel]   = useState("Home");
-  const [query,   setQuery]   = useState("");
-  const [parsed,  setParsed]  = useState(null);
-  const [saving,  setSaving]  = useState(false);
+  const [label,           setLabel]           = useState("Home");
+  const [query,           setQuery]           = useState("");
+  const [parsed,          setParsed]          = useState(null); // { street, city, postcode, lat, lng }
+  const [confirmedCoords, setConfirmedCoords] = useState(null); // { lat, lng } once fine-tuned on the map
+  const [showMap,         setShowMap]         = useState(false);
+  const [saving,          setSaving]          = useState(false);
+
+  const handleSelect = (p) => {
+    setParsed(p);
+    setConfirmedCoords(null); // reset fine-tuning when a new address is picked
+  };
+
+  const coords = confirmedCoords || (parsed && parsed.lat != null ? { lat: parsed.lat, lng: parsed.lng } : null);
 
   const handleSave = async () => {
     if (!parsed) return;
     setSaving(true);
-    await onSave({ label: label.trim() || "Home", street: parsed.street, city: parsed.city, postcode: parsed.postcode });
+    await onSave({
+      label:   label.trim() || "Home",
+      street:  parsed.street,
+      city:    parsed.city,
+      postcode: parsed.postcode,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
+    });
     setSaving(false);
   };
+
+  if (showMap && coords) {
+    return (
+      <LocationMapPicker
+        lat={coords.lat}
+        lng={coords.lng}
+        addressLabel={query}
+        onCancel={() => setShowMap(false)}
+        onConfirm={(c) => { setConfirmedCoords(c); setShowMap(false); }}
+      />
+    );
+  }
 
   return (
     <div style={{ background: CARD, borderRadius: 18, border: `1px solid ${BORDER}`, padding: 16, margin: "0 20px 20px" }}>
@@ -184,12 +224,22 @@ function AddAddressPanel({ onCancel, onSave }) {
 
       <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Address</div>
       <div style={{ background: "#FAFAF8", borderRadius: 10, padding: "10px 12px" }}>
-        <AddressAutocomplete value={query} onChange={setQuery} onSelect={setParsed} placeholder="Start typing an address…" />
+        <AddressAutocomplete value={query} onChange={setQuery} onSelect={handleSelect} placeholder="Start typing an address…" />
       </div>
 
       {parsed && (
-        <div style={{ marginTop: 10, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-          📍 {parsed.street}{parsed.city ? `, ${parsed.city}` : ""}{parsed.postcode ? `, ${parsed.postcode}` : ""}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+            📍 {parsed.street}{parsed.city ? `, ${parsed.city}` : ""}{parsed.postcode ? `, ${parsed.postcode}` : ""}
+          </div>
+          {coords && (
+            <button
+              onClick={() => setShowMap(true)}
+              style={{ marginTop: 8, width: "100%", padding: "10px", borderRadius: 10, background: confirmedCoords ? ACCENT2 + "12" : "#FAFAF8", border: `1px solid ${confirmedCoords ? ACCENT2 + "40" : BORDER}`, fontSize: 12.5, fontWeight: 700, color: confirmedCoords ? ACCENT2 : TEXT, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              {confirmedCoords ? "✓ Pin fine-tuned — tap to adjust again" : "🗺️  Fine-tune exact location on map"}
+            </button>
+          )}
         </div>
       )}
 

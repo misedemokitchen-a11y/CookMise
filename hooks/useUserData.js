@@ -73,9 +73,11 @@ export function useUserData(user) {
   };
 
   // ── Addresses (list, ordered — top of list is always the default) ─────────
-  // Requires an `order_index` (int, default 0) column on `addresses`.
-  // If that column doesn't exist yet in Supabase, run:
+  // Requires an `order_index` (int, default 0) column, plus `lat`/`lng`
+  // (double precision) columns on `addresses`. If these don't exist yet, run:
   //   alter table addresses add column order_index integer default 0;
+  //   alter table addresses add column lat double precision;
+  //   alter table addresses add column lng double precision;
   const loadAddresses = async () => {
     let { data, error } = await supabase
       .from("addresses")
@@ -97,13 +99,13 @@ export function useUserData(user) {
     setDefaultAddress(list.find(a => a.is_default) || list[0] || null);
   };
 
-  const addAddress = async ({ label = "Home", street, city, postcode }) => {
+  const addAddress = async ({ label = "Home", street, city, postcode, lat = null, lng = null }) => {
     const isFirst = addresses.length === 0;
     const { data, error } = await supabase
       .from("addresses")
       .insert({
         user_id:     user.id,
-        label, street, city, postcode,
+        label, street, city, postcode, lat, lng,
         is_default:  isFirst,
         order_index: addresses.length,
       })

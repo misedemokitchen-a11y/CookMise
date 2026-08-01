@@ -103,22 +103,25 @@ function parseAddressComponents(result) {
 const USA_CENTER = { lat: 39.8283, lng: -98.5795 };
 const USA_ZOOM   = 4;
 
-function AddAddressScreen({ onCancel, onSave }) {
-  const [label,               setLabel]               = useState("Home");
-  const [query,                setQuery]                = useState("");
+function AddAddressScreen({ onCancel, onSave, initial = null }) {
+  const [label,               setLabel]               = useState(initial?.label || "Home");
+  const [query,                setQuery]                = useState(initial ? [initial.street, initial.city, initial.postcode].filter(Boolean).join(", ") : "");
+  const [unit,                 setUnit]                 = useState(initial?.unit || "");
+  const [notes,                setNotes]                = useState(initial?.notes || "");
   const [suggestions,          setSuggestions]          = useState([]);
   const [loadingSuggestions,   setLoadingSuggestions]   = useState(false);
   const [focused,              setFocused]              = useState(false);
-  const [parsed,               setParsed]               = useState(null); // { street, city, postcode }
-  const [coords,               setCoords]               = useState(null); // { lat, lng }
+  const [parsed,               setParsed]               = useState(initial ? { street: initial.street, city: initial.city, postcode: initial.postcode } : null);
+  const [coords,               setCoords]               = useState(initial && initial.lat != null ? { lat: initial.lat, lng: initial.lng } : null);
   const [saving,               setSaving]               = useState(false);
   const [mapReady,             setMapReady]             = useState(false);
   const [mapError,             setMapError]             = useState(null);
 
-  const mapDivRef    = useRef(null);
-  const mapObjRef    = useRef(null);
-  const markerRef    = useRef(null);
-  const debounceRef  = useRef(null);
+  const mapDivRef        = useRef(null);
+  const mapObjRef        = useRef(null);
+  const markerRef        = useRef(null);
+  const debounceRef      = useRef(null);
+  const initialCoordsRef = useRef(coords); // captured once, for map init only
 
   const placeMarker = (maps, map, lat, lng, { pan = true, zoom } = {}) => {
     const position = { lat, lng };
@@ -143,9 +146,10 @@ function AddAddressScreen({ onCancel, onSave }) {
       .then((maps) => {
         if (cancelled || !mapDivRef.current) return;
 
+        const startCoords = initialCoordsRef.current;
         const map = new maps.Map(mapDivRef.current, {
-          center: USA_CENTER,
-          zoom: USA_ZOOM,
+          center: startCoords || USA_CENTER,
+          zoom: startCoords ? 17 : USA_ZOOM,
           disableDefaultUI: true,
           zoomControl: true,
           clickableIcons: false,
@@ -153,9 +157,12 @@ function AddAddressScreen({ onCancel, onSave }) {
         mapObjRef.current = map;
         setMapReady(true);
 
-        // Default to the user's current location if they grant permission;
-        // otherwise the map just stays on the continental-US view.
-        if (navigator.geolocation) {
+        if (startCoords) {
+          // Editing an existing address — drop the pin where it already was.
+          placeMarker(maps, map, startCoords.lat, startCoords.lng, { pan: false });
+        } else if (navigator.geolocation) {
+          // New address — default to the user's current location if granted;
+          // otherwise the map just stays on the continental-US view.
           navigator.geolocation.getCurrentPosition(
             (pos) => {
               if (cancelled) return;
@@ -195,6 +202,7 @@ function AddAddressScreen({ onCancel, onSave }) {
 
   const handleSelectSuggestion = async (s) => {
     setSuggestions([]);
+    setFocused(false);
     setQuery(s.description);
     setLoadingSuggestions(true);
     try {
@@ -216,47 +224,50 @@ function AddAddressScreen({ onCancel, onSave }) {
     if (!parsed || !coords) return;
     setSaving(true);
     await onSave({
+      id: initial?.id,
       label:    label.trim() || "Home",
       street:   parsed.street,
+      unit:     unit.trim(),
       city:     parsed.city,
       postcode: parsed.postcode,
+      notes:    notes.trim(),
       lat: coords.lat,
       lng: coords.lng,
     });
     setSaving(false);
   };
 
+  const fieldBoxStyle = { flexShrink: 0, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "9px 14px" };
+  const fieldLabelStyle = { fontSize: 9.5, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 };
+  const fieldStyle = { border: "none", outline: "none", background: "transparent", fontSize: 14.5, color: TEXT, fontFamily: "inherit", width: "100%", boxSizing: "border-box" };
+
   return (
-    <div style={{ position: "absolute", inset: 0, background: BG, zIndex: 1000, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "44px 20px 12px", display: "flex", alignItems: "center", gap: 14, background: CARD, borderBottom: `1px solid ${BORDER}`, zIndex: 2 }}>
+    <div style={{ position: "absolute", inset: 0, background: BG, zIndex: 1000, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "44px 20px 12px", display: "flex", alignItems: "center", gap: 14, background: CARD, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <button onClick={onCancel} style={{ width: 36, height: 36, borderRadius: 12, background: BG, border: `1px solid ${BORDER}`, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>←</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: TEXT, margin: 0, fontFamily: "Georgia, serif" }}>Add Address</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: TEXT, margin: 0, fontFamily: "Georgia, serif" }}>{initial ? "Edit Address" : "Add Address"}</h2>
       </div>
 
-      <div style={{ flex: 1, position: "relative" }}>
-        <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
-        {!mapReady && !mapError && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: BG, fontSize: 13, color: MUTED }}>Loading map…</div>
-        )}
-        {mapError && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: BG, fontSize: 13, color: "#C0392B", padding: 24, textAlign: "center", lineHeight: 1.5 }}>{mapError}</div>
-        )}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8, padding: "12px 20px 0" }}>
+        {/* Name — its own box */}
+        <div style={fieldBoxStyle}>
+          <div style={fieldLabelStyle}>Name</div>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Home, Work, etc." style={fieldStyle} />
+        </div>
 
-        {/* Floating search bar over the map */}
-        <div style={{ position: "absolute", top: 14, left: 14, right: 14, zIndex: 3 }}>
-          <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 6px 20px rgba(0,0,0,0.12)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <input
-              value={query}
-              onChange={e => handleQueryChange(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setTimeout(() => setFocused(false), 150)}
-              placeholder="Search for your address…"
-              style={{ border: "none", outline: "none", background: "transparent", fontSize: 15, color: TEXT, fontFamily: "inherit", width: "100%" }}
-            />
-          </div>
+        {/* Address — its own box */}
+        <div style={{ ...fieldBoxStyle, position: "relative", zIndex: 5 }}>
+          <div style={fieldLabelStyle}>Address</div>
+          <input
+            value={query}
+            onChange={e => handleQueryChange(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setTimeout(() => setFocused(false), 150)}
+            placeholder="Search for your address…"
+            style={fieldStyle}
+          />
           {focused && (suggestions.length > 0 || loadingSuggestions) && (
-            <div style={{ marginTop: 6, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 8px 28px rgba(0,0,0,0.14)", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 8px 28px rgba(0,0,0,0.14)", zIndex: 50, overflow: "hidden" }}>
               {loadingSuggestions && !suggestions.length
                 ? <div style={{ padding: "12px 16px", fontSize: 13, color: MUTED }}>Searching…</div>
                 : suggestions.map((s, i) => (
@@ -272,21 +283,43 @@ function AddAddressScreen({ onCancel, onSave }) {
             </div>
           )}
         </div>
+
+        {/* Unit — its own box */}
+        <div style={fieldBoxStyle}>
+          <div style={fieldLabelStyle}>Unit / Apt (optional)</div>
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Apt 4B, Suite 200, etc." style={fieldStyle} />
+        </div>
+
+        {/* Notes — its own box */}
+        <div style={fieldBoxStyle}>
+          <div style={fieldLabelStyle}>Notes</div>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Gate code, entrance, delivery instructions…"
+            rows={2}
+            style={{ ...fieldStyle, resize: "none", lineHeight: 1.4 }}
+          />
+        </div>
+
+        {/* Map — fills whatever vertical space is left */}
+        <div style={{ flex: 1, minHeight: 90, position: "relative", borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", background: CARD }}>
+          <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
+          {!mapReady && !mapError && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: MUTED }}>Loading map…</div>
+          )}
+          {mapError && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#C0392B", padding: 24, textAlign: "center", lineHeight: 1.5 }}>{mapError}</div>
+          )}
+        </div>
+        <div style={{ flexShrink: 0, fontSize: 10.5, color: MUTED, margin: "0 2px 8px", lineHeight: 1.4 }}>
+          {parsed
+            ? "Drag the pin or tap the map to fine-tune the exact spot"
+            : "Search for an address above, or tap the map to drop a pin"}
+        </div>
       </div>
 
-      <div style={{ padding: 16, background: CARD, borderTop: `1px solid ${BORDER}` }}>
-        {parsed && (
-          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, marginBottom: 10 }}>
-            📍 {parsed.street}{parsed.city ? `, ${parsed.city}` : ""}{parsed.postcode ? `, ${parsed.postcode}` : ""}
-            {coords && <span style={{ display: "block", marginTop: 2, fontSize: 11 }}>Drag the pin to fine-tune the exact spot</span>}
-          </div>
-        )}
-        <input
-          value={label}
-          onChange={e => setLabel(e.target.value)}
-          placeholder="Label (Home, Work, etc.)"
-          style={{ border: "none", outline: "none", background: "#FAFAF8", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: TEXT, fontFamily: "inherit", width: "100%", marginBottom: 12, boxSizing: "border-box" }}
-        />
+      <div style={{ padding: 16, background: CARD, borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onCancel} style={{ flex: 1, padding: "13px", borderRadius: 12, background: "#F4F2EE", border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
           <button
@@ -294,7 +327,7 @@ function AddAddressScreen({ onCancel, onSave }) {
             disabled={!parsed || !coords || saving}
             style={{ flex: 1, padding: "13px", borderRadius: 12, background: (!parsed || !coords) ? BORDER : "#385348", border: "none", fontSize: 14, fontWeight: 700, color: (!parsed || !coords) ? MUTED : "#fff", cursor: (!parsed || !coords) ? "default" : "pointer", fontFamily: "inherit" }}
           >
-            {saving ? "Saving…" : "Add Address"}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
@@ -303,45 +336,27 @@ function AddAddressScreen({ onCancel, onSave }) {
 }
 
 // ── AddressRow ─────────────────────────────────────────────────────────────
-function AddressRow({ addr, isDefault, isDragging, dragStyle, dragHandleProps, onRename, onDelete }) {
-  const [editing, setEditing] = useState(false);
-  const [label,   setLabel]   = useState(addr.label);
-
-  const commitRename = () => {
-    setEditing(false);
-    const trimmed = label.trim();
-    if (trimmed && trimmed !== addr.label) onRename(addr.id, trimmed);
-    else setLabel(addr.label);
-  };
-
+function AddressRow({ addr, isDefault, isDragging, dragStyle, dragHandleProps, onEdit, onDelete }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 12px 14px 6px", background: isDragging ? "#FAFAF8" : CARD, ...dragStyle }}>
       <div {...dragHandleProps} style={{ cursor: "grab", color: MUTED, fontSize: 18, padding: "4px 6px", touchAction: "none", flexShrink: 0, userSelect: "none", lineHeight: 1 }}>⠿</div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0 }} onClick={() => onEdit(addr)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-          {editing ? (
-            <input
-              autoFocus
-              value={label}
-              onChange={e => setLabel(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={e => e.key === "Enter" && commitRename()}
-              style={{ border: "none", outline: "none", background: "#FAFAF8", borderRadius: 6, padding: "2px 6px", fontSize: 14, fontWeight: 700, color: TEXT, fontFamily: "inherit", minWidth: 0 }}
-            />
-          ) : (
-            <span style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{addr.label}</span>
-          )}
+          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{addr.label}</span>
           {isDefault && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT2, background: ACCENT2 + "15", borderRadius: 20, padding: "2px 7px", flexShrink: 0, letterSpacing: 0.4 }}>DEFAULT</span>}
         </div>
         <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {addr.street}{addr.city ? `, ${addr.city}` : ""}{addr.postcode ? `, ${addr.postcode}` : ""}
+          {addr.street}{addr.unit ? `, ${addr.unit}` : ""}{addr.city ? `, ${addr.city}` : ""}{addr.postcode ? `, ${addr.postcode}` : ""}
         </div>
+        {addr.notes && (
+          <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            📝 {addr.notes}
+          </div>
+        )}
       </div>
 
-      {!editing && (
-        <button onClick={() => setEditing(true)} title="Rename" style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: 6, flexShrink: 0 }}>✎</button>
-      )}
+      <button onClick={() => onEdit(addr)} title="Edit" style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: 6, flexShrink: 0 }}>✎</button>
       <button onClick={() => onDelete(addr.id)} title="Delete" style={{ background: "none", border: "none", cursor: "pointer", color: "#C0392B", fontSize: 14, padding: 6, flexShrink: 0 }}>🗑</button>
     </div>
   );
@@ -352,7 +367,7 @@ function AddressRow({ addr, isDefault, isDragging, dragStyle, dragHandleProps, o
 // on top becomes the default address.
 const ROW_HEIGHT = 74; // approx row height incl. divider, used for swap thresholds
 
-function DraggableAddressList({ addresses, onReorder, onRename, onDelete }) {
+function DraggableAddressList({ addresses, onReorder, onEdit, onDelete }) {
   // `dragOrder` only exists while a drag is in progress — it's the live,
   // reordered copy. When not dragging, we render `addresses` directly so
   // there's no prop-to-state syncing effect needed.
@@ -430,7 +445,7 @@ function DraggableAddressList({ addresses, onReorder, onRename, onDelete }) {
                   : { transition: "transform 0.15s" }
               }
               dragHandleProps={{ onPointerDown: (e) => onPointerDown(e, i) }}
-              onRename={onRename}
+              onEdit={onEdit}
               onDelete={onDelete}
             />
             {i < list.length - 1 && <div style={{ height: 1, background: BORDER, marginLeft: 16 }} />}
@@ -442,12 +457,18 @@ function DraggableAddressList({ addresses, onReorder, onRename, onDelete }) {
 }
 
 // ── AddressesScreen ────────────────────────────────────────────────────────────
-function AddressesScreen({ onBack, addresses = [], addAddress, renameAddress, deleteAddress, reorderAddresses }) {
-  const [adding, setAdding] = useState(false);
+function AddressesScreen({ onBack, addresses = [], addAddress, updateAddress, deleteAddress, reorderAddresses }) {
+  const [adding,      setAdding]      = useState(false);
+  const [editingAddr, setEditingAddr] = useState(null);
 
   const handleAdd = async (fields) => {
     await addAddress?.(fields);
     setAdding(false);
+  };
+
+  const handleUpdate = async (fields) => {
+    await updateAddress?.(fields.id, fields);
+    setEditingAddr(null);
   };
 
   const handleDelete = async (id) => {
@@ -456,6 +477,9 @@ function AddressesScreen({ onBack, addresses = [], addAddress, renameAddress, de
 
   if (adding) {
     return <AddAddressScreen onCancel={() => setAdding(false)} onSave={handleAdd} />;
+  }
+  if (editingAddr) {
+    return <AddAddressScreen initial={editingAddr} onCancel={() => setEditingAddr(null)} onSave={handleUpdate} />;
   }
 
   return (
@@ -474,11 +498,11 @@ function AddressesScreen({ onBack, addresses = [], addAddress, renameAddress, de
           <DraggableAddressList
             addresses={addresses}
             onReorder={reorderAddresses}
-            onRename={renameAddress}
+            onEdit={setEditingAddr}
             onDelete={handleDelete}
           />
           <div style={{ fontSize: 11, color: MUTED, margin: "8px 4px 0", lineHeight: 1.5 }}>
-            Drag <span style={{ fontWeight: 700 }}>⠿</span> to reorder — the address on top is used as your default.
+            Drag <span style={{ fontWeight: 700 }}>⠿</span> to reorder — the address on top is used as your default. Tap an address to edit it.
           </div>
         </div>
       )}
@@ -555,12 +579,12 @@ function ProfileScreen({ onBack, user, profile, setProfile, updateProfile }) {
 }
 
 // ── SettingsScreen ────────────────────────────────────────────────────────────
-export function SettingsScreen({ onClose, user, profile, setProfile, updateProfile, dietaryPrefs, saveDiet, addresses, addAddress, renameAddress, deleteAddress, reorderAddresses }) {
+export function SettingsScreen({ onClose, user, profile, setProfile, updateProfile, dietaryPrefs, saveDiet, addresses, addAddress, updateAddress, deleteAddress, reorderAddresses }) {
   const [subScreen, setSubScreen] = useState(null);
 
   if (subScreen === "diet")      return <DietScreen      onBack={() => setSubScreen(null)} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} />;
   if (subScreen === "profile")   return <ProfileScreen   onBack={() => setSubScreen(null)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} />;
-  if (subScreen === "addresses") return <AddressesScreen onBack={() => setSubScreen(null)} addresses={addresses} addAddress={addAddress} renameAddress={renameAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
+  if (subScreen === "addresses") return <AddressesScreen onBack={() => setSubScreen(null)} addresses={addresses} addAddress={addAddress} updateAddress={updateAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
 
   const sections = [
     { title: "Account", items: [

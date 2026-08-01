@@ -73,11 +73,14 @@ export function useUserData(user) {
   };
 
   // ── Addresses (list, ordered — top of list is always the default) ─────────
-  // Requires an `order_index` (int, default 0) column, plus `lat`/`lng`
-  // (double precision) columns on `addresses`. If these don't exist yet, run:
+  // Requires an `order_index` (int, default 0) column, `lat`/`lng` (double
+  // precision), and `unit`/`notes` (text) columns on `addresses`. If these
+  // don't exist yet, run:
   //   alter table addresses add column order_index integer default 0;
   //   alter table addresses add column lat double precision;
   //   alter table addresses add column lng double precision;
+  //   alter table addresses add column unit text;
+  //   alter table addresses add column notes text;
   const loadAddresses = async () => {
     let { data, error } = await supabase
       .from("addresses")
@@ -99,13 +102,13 @@ export function useUserData(user) {
     setDefaultAddress(list.find(a => a.is_default) || list[0] || null);
   };
 
-  const addAddress = async ({ label = "Home", street, city, postcode, lat = null, lng = null }) => {
+  const addAddress = async ({ label = "Home", street, unit = "", city, postcode, notes = "", lat = null, lng = null }) => {
     const isFirst = addresses.length === 0;
     const { data, error } = await supabase
       .from("addresses")
       .insert({
         user_id:     user.id,
-        label, street, city, postcode, lat, lng,
+        label, street, unit, city, postcode, notes, lat, lng,
         is_default:  isFirst,
         order_index: addresses.length,
       })
@@ -121,6 +124,26 @@ export function useUserData(user) {
   const renameAddress = async (id, label) => {
     setAddresses(prev => prev.map(a => (a.id === id ? { ...a, label } : a)));
     await supabase.from("addresses").update({ label }).eq("id", id).eq("user_id", user.id);
+  };
+
+  // Full edit: label, street, unit, city, postcode, notes, lat, lng.
+  const updateAddress = async (id, { label, street, unit, city, postcode, notes, lat, lng }) => {
+    const patch = { label, street, unit, city, postcode, notes, lat, lng };
+    setAddresses(prev => prev.map(a => (a.id === id ? { ...a, ...patch } : a)));
+
+    const { data } = await supabase
+      .from("addresses")
+      .update(patch)
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select()
+      .single();
+
+    if (data) {
+      setAddresses(prev => prev.map(a => (a.id === id ? data : a)));
+      setDefaultAddress(prev => (prev?.id === id ? data : prev));
+    }
+    return data;
   };
 
   const deleteAddress = async (id) => {
@@ -208,7 +231,7 @@ export function useUserData(user) {
     savedRecipes,  toggleSaved,
     dietaryPrefs,  saveDiet,
     addresses, defaultAddress,
-    addAddress, renameAddress, deleteAddress, reorderAddresses,
+    addAddress, renameAddress, updateAddress, deleteAddress, reorderAddresses,
     orderHistory,  placeOrder,
     updateProfile,
     loading,

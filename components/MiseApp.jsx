@@ -50,7 +50,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
     savedRecipes, toggleSaved,
     dietaryPrefs, saveDiet,
     addresses, defaultAddress,
-    addAddress, renameAddress, deleteAddress, reorderAddresses,
+    addAddress, updateAddress, deleteAddress, reorderAddresses,
     orderHistory, placeOrder,
     updateProfile,
   } = useUserData(user);
@@ -98,7 +98,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
   const showNav = !["login"].includes(screen);
 
   const renderScreen = () => {
-    if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} addresses={addresses} addAddress={addAddress} renameAddress={renameAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
+    if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} addresses={addresses} addAddress={addAddress} updateAddress={updateAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
     switch (screen) {
       case "home":    return <HomeScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} showSettings={showSettings} setShowSettings={setShowSettings} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} user={user} profile={profile} setProfile={setProfile} />;
       case "explore": return <ExploreScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} resetRef={exploreResetRef} />;

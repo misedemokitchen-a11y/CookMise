@@ -77,18 +77,23 @@ function DietScreen({ onBack, dietaryPrefs = {}, saveDiet }) {
 }
 
 // ── parseAddressComponents ──────────────────────────────────────────────────
-// Splits a Google geocode result into street / city / postcode / lat / lng.
+// Splits a Google geocode result into street / city / state / postcode / lat / lng.
 function parseAddressComponents(result) {
-  if (!result) return { street: "", city: "", postcode: "", lat: null, lng: null };
+  if (!result) return { street: "", city: "", state: "", postcode: "", lat: null, lng: null };
   const comps = result.address_components || [];
-  const get = (type) => comps.find(c => c.types.includes(type))?.long_name || "";
+  const get = (type, useShort = false) => {
+    const c = comps.find(c => c.types.includes(type));
+    return c ? (useShort ? c.short_name : c.long_name) : "";
+  };
   const street = [get("street_number"), get("route")].filter(Boolean).join(" ");
   const city = get("locality") || get("postal_town") || get("sublocality") || get("administrative_area_level_2") || "";
+  const state = get("administrative_area_level_1", true);
   const postcode = get("postal_code");
   const loc = result.geometry?.location || null;
   return {
     street: street || result.formatted_address || "",
     city,
+    state,
     postcode,
     lat: loc?.lat ?? null,
     lng: loc?.lng ?? null,
@@ -120,13 +125,13 @@ const MAP_STYLE = [
 
 function AddAddressScreen({ onCancel, onSave, initial = null }) {
   const [label,               setLabel]               = useState(initial?.label || "");
-  const [query,                setQuery]                = useState(initial ? [initial.street, initial.city, initial.postcode].filter(Boolean).join(", ") : "");
+  const [query,                setQuery]                = useState(initial ? [initial.street, initial.city, initial.state, initial.postcode].filter(Boolean).join(", ") : "");
   const [unit,                 setUnit]                 = useState(initial?.unit || "");
   const [notes,                setNotes]                = useState(initial?.notes || "");
   const [suggestions,          setSuggestions]          = useState([]);
   const [loadingSuggestions,   setLoadingSuggestions]   = useState(false);
   const [focused,              setFocused]              = useState(false);
-  const [parsed,               setParsed]               = useState(initial ? { street: initial.street, city: initial.city, postcode: initial.postcode } : null);
+  const [parsed,               setParsed]               = useState(initial ? { street: initial.street, city: initial.city, state: initial.state, postcode: initial.postcode } : null);
   const [coords,               setCoords]               = useState(initial && initial.lat != null ? { lat: initial.lat, lng: initial.lng } : null);
   const [saving,               setSaving]               = useState(false);
   const [mapReady,             setMapReady]             = useState(false);
@@ -145,7 +150,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       if (!initial) return null;
       // Editing an address that doesn't have stored coordinates (e.g. an
       // older row saved before lat/lng existed) — geocode its text instead.
-      const addressText = [initial.street, initial.city, initial.postcode].filter(Boolean).join(", ");
+      const addressText = [initial.street, initial.city, initial.state, initial.postcode].filter(Boolean).join(", ");
       if (!addressText) return null;
       try {
         const res  = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(addressText)}`);
@@ -211,6 +216,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
     setQuery("");
     setSuggestions([]);
     setParsed(null);
+    setCoords(null);
   };
 
   const handleSelectSuggestion = async (s) => {
@@ -249,6 +255,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       street:   parsed.street,
       unit:     unit.trim(),
       city:     parsed.city,
+      state:    parsed.state,
       postcode: parsed.postcode,
       notes:    notes.trim(),
       lat: coords.lat,
@@ -273,7 +280,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Name (Home, Work, etc.)" style={fieldStyle} />
         </div>
 
-        {/* Address */}
+        {/* Address — single Google-fill search box (street, city, state, zip together) */}
         <div style={{ ...fieldBoxStyle, position: "relative", zIndex: 5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
@@ -313,7 +320,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           )}
         </div>
 
-        {/* Unit */}
+        {/* Unit — its own line */}
         <div style={fieldBoxStyle}>
           <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit / Apt (optional)" style={fieldStyle} />
         </div>
@@ -383,8 +390,13 @@ function AddressRow({ addr, isDefault, isDragging, dragStyle, dragHandleProps, o
           {isDefault && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT2, background: ACCENT2 + "15", borderRadius: 20, padding: "2px 7px", flexShrink: 0, letterSpacing: 0.4 }}>DEFAULT</span>}
         </div>
         <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {addr.street}{addr.unit ? `, ${addr.unit}` : ""}{addr.city ? `, ${addr.city}` : ""}{addr.postcode ? `, ${addr.postcode}` : ""}
+          {addr.street}{addr.city ? `, ${addr.city}` : ""}{addr.state ? ` ${addr.state}` : ""}{addr.postcode ? ` ${addr.postcode}` : ""}
         </div>
+        {addr.unit && (
+          <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Unit {addr.unit}
+          </div>
+        )}
         {addr.notes && (
           <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             📝 {addr.notes}

@@ -109,20 +109,13 @@ const USA_CENTER = { lat: 39.8283, lng: -98.5795 };
 const USA_ZOOM   = 4;
 
 const MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#F5F3EE" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8A8880" }] },
+  { elementType: "geometry", stylers: [{ color: "#F7F5F0" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#6B6A62" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#FFFFFF" }] },
-  { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
-  { featureType: "administrative.locality", elementType: "labels", stylers: [{ visibility: "on" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
-  { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#EDE9E2" }] },
-  { featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] },
   { featureType: "water", elementType: "geometry", stylers: [{ color: "#CFE3D6" }] },
   { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#EAF0E7" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#EDE9E2" }] },
 ];
 
 function AddAddressScreen({ onCancel, onSave, initial = null }) {
@@ -147,11 +140,30 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
   useEffect(() => {
     let cancelled = false;
 
+    const resolveStartCoords = async () => {
+      if (initialCoordsRef.current) return initialCoordsRef.current;
+      if (!initial) return null;
+      // Editing an address that doesn't have stored coordinates (e.g. an
+      // older row saved before lat/lng existed) — geocode its text instead.
+      const addressText = [initial.street, initial.city, initial.postcode].filter(Boolean).join(", ");
+      if (!addressText) return null;
+      try {
+        const res  = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(addressText)}`);
+        const data = await res.json();
+        const loc  = data.results?.[0]?.geometry?.location;
+        return loc ? { lat: loc.lat, lng: loc.lng } : null;
+      } catch {
+        return null;
+      }
+    };
+
     loadGoogleMaps()
-      .then((maps) => {
+      .then(async (maps) => {
         if (cancelled || !mapDivRef.current) return;
 
-        const startCoords = initialCoordsRef.current;
+        const startCoords = await resolveStartCoords();
+        if (cancelled || !mapDivRef.current) return;
+
         const map = new maps.Map(mapDivRef.current, {
           center: startCoords || USA_CENTER,
           zoom: startCoords ? 17 : USA_ZOOM,
@@ -163,6 +175,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
         });
         mapObjRef.current = map;
         setMapReady(true);
+        if (startCoords) setCoords(startCoords);
 
         // Fires after any pan/zoom settles — keeps `coords` in sync with
         // whatever the center pin points at.
@@ -174,6 +187,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       .catch((e) => setMapError(e.message || "Couldn't load the map"));
 
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only
   }, []);
 
   const fetchSuggestions = async (val) => {
@@ -191,6 +205,12 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
     setQuery(val);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(val), 250);
+  };
+
+  const handleClearAddress = () => {
+    setQuery("");
+    setSuggestions([]);
+    setParsed(null);
   };
 
   const handleSelectSuggestion = async (s) => {
@@ -255,14 +275,26 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
 
         {/* Address */}
         <div style={{ ...fieldBoxStyle, position: "relative", zIndex: 5 }}>
-          <input
-            value={query}
-            onChange={e => handleQueryChange(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setTimeout(() => setFocused(false), 150)}
-            placeholder="Address"
-            style={fieldStyle}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              value={query}
+              onChange={e => handleQueryChange(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              placeholder="Address"
+              style={{ ...fieldStyle, flex: 1 }}
+            />
+            {query.length > 0 && (
+              <button
+                onMouseDown={e => e.preventDefault()}
+                onClick={handleClearAddress}
+                title="Clear"
+                style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 10, border: "none", background: BORDER, color: MUTED, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           {focused && (suggestions.length > 0 || loadingSuggestions) && (
             <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 8px 28px rgba(0,0,0,0.14)", zIndex: 50, overflow: "hidden" }}>
               {loadingSuggestions && !suggestions.length
@@ -288,12 +320,11 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
 
         {/* Notes */}
         <div style={fieldBoxStyle}>
-          <textarea
+          <input
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="Notes (gate code, entrance, delivery instructions…)"
-            rows={1}
-            style={{ ...fieldStyle, resize: "none", lineHeight: 1.4 }}
+            placeholder="Instructions"
+            style={fieldStyle}
           />
         </div>
 

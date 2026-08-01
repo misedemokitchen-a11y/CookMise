@@ -10,6 +10,7 @@ import { recipes } from "@/data/recipes";
 export function useUserData(user) {
   const [savedRecipes,  setSavedRecipes]  = useState([]);
   const [dietaryPrefs,  setDietaryPrefs]  = useState({});
+  const [addresses,      setAddresses]      = useState([]);
   const [defaultAddress, setDefaultAddress] = useState(null);
   const [orderHistory,  setOrderHistory]  = useState([]);
   const [loading,       setLoading]       = useState(false);
@@ -18,7 +19,7 @@ export function useUserData(user) {
   useEffect(() => {
     if (!user) return;
     setLoading(true);
-    Promise.all([loadSaved(), loadDiet(), loadAddress(), loadOrders()])
+    Promise.all([loadSaved(), loadDiet(), loadAddresses(), loadOrders()])
       .finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -71,30 +72,92 @@ export function useUserData(user) {
     setDietaryPrefs(prefs);
   };
 
-  // ── Default address ────────────────────────────────────────────────────────
-  const loadAddress = async () => {
-    const { data } = await supabase
+  // ── Addresses (list, ordered — top of list is always the default) ─────────
+  // Requires an `order_index` (int, default 0) column on `addresses`.
+  // If that column doesn't exist yet in Supabase, run:
+  //   alter table addresses add column order_index integer default 0;
+  const loadAddresses = async () => {
+    let { data, error } = await supabase
       .from("addresses")
       .select("*")
       .eq("user_id", user.id)
-      .eq("is_default", true)
-      .single();
-    if (data) setDefaultAddress(data);
+      .order("order_index", { ascending: true });
+
+    if (error) {
+      // Fallback for schemas that don't have order_index yet
+      ({ data } = await supabase
+        .from("addresses")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }));
+    }
+
+    const list = data || [];
+    setAddresses(list);
+    setDefaultAddress(list.find(a => a.is_default) || list[0] || null);
   };
 
-  const saveAddress = async ({ label = "Home", street, city, postcode }) => {
-    // Clear existing default first
-    await supabase
+  const addAddress = async ({ label = "Home", street, city, postcode }) => {
+    const isFirst = addresses.length === 0;
+    const { data, error } = await supabase
       .from("addresses")
-      .update({ is_default: false })
-      .eq("user_id", user.id);
-
-    const { data } = await supabase
-      .from("addresses")
-      .insert({ user_id: user.id, label, street, city, postcode, is_default: true })
+      .insert({
+        user_id:     user.id,
+        label, street, city, postcode,
+        is_default:  isFirst,
+        order_index: addresses.length,
+      })
       .select()
       .single();
-    if (data) setDefaultAddress(data);
+    if (error || !data) return null;
+    const next = [...addresses, data];
+    setAddresses(next);
+    if (isFirst) setDefaultAddress(data);
+    return data;
+  };
+
+  const renameAddress = async (id, label) => {
+    setAddresses(prev => prev.map(a => (a.id === id ? { ...a, label } : a)));
+    await supabase.from("addresses").update({ label }).eq("id", id).eq("user_id", user.id);
+  };
+
+  const deleteAddress = async (id) => {
+    const wasDefault = addresses.find(a => a.id === id)?.is_default;
+    let remaining     = addresses.filter(a => a.id !== id);
+
+    await supabase.from("addresses").delete().eq("id", id).eq("user_id", user.id);
+
+    if (wasDefault && remaining.length > 0) {
+      remaining = remaining.map((a, i) => (i === 0 ? { ...a, is_default: true } : a));
+      await supabase.from("addresses").update({ is_default: true }).eq("id", remaining[0].id).eq("user_id", user.id);
+    }
+
+    setAddresses(remaining);
+    setDefaultAddress(remaining.find(a => a.is_default) || remaining[0] || null);
+  };
+
+  // Reorders by an array of address ids in the new top-to-bottom order.
+  // The item at index 0 becomes the default address.
+  const reorderAddresses = async (orderedIds) => {
+    const next = orderedIds
+      .map((id, i) => {
+        const addr = addresses.find(a => a.id === id);
+        return addr ? { ...addr, order_index: i, is_default: i === 0 } : null;
+      })
+      .filter(Boolean);
+
+    setAddresses(next);
+    setDefaultAddress(next[0] || null);
+
+    await Promise.all(
+      next.map(a =>
+        supabase
+          .from("addresses")
+          .update({ order_index: a.order_index, is_default: a.is_default })
+          .eq("id", a.id)
+          .eq("user_id", user.id)
+      )
+    );
   };
 
   // ── Order history ──────────────────────────────────────────────────────────
@@ -142,7 +205,8 @@ export function useUserData(user) {
   return {
     savedRecipes,  toggleSaved,
     dietaryPrefs,  saveDiet,
-    defaultAddress, saveAddress,
+    addresses, defaultAddress,
+    addAddress, renameAddress, deleteAddress, reorderAddresses,
     orderHistory,  placeOrder,
     updateProfile,
     loading,

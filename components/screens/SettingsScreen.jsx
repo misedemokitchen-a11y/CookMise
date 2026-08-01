@@ -104,7 +104,7 @@ const USA_CENTER = { lat: 39.8283, lng: -98.5795 };
 const USA_ZOOM   = 4;
 
 function AddAddressScreen({ onCancel, onSave, initial = null }) {
-  const [label,               setLabel]               = useState(initial?.label || "Home");
+  const [label,               setLabel]               = useState(initial?.label || "");
   const [query,                setQuery]                = useState(initial ? [initial.street, initial.city, initial.postcode].filter(Boolean).join(", ") : "");
   const [unit,                 setUnit]                 = useState(initial?.unit || "");
   const [notes,                setNotes]                = useState(initial?.notes || "");
@@ -119,26 +119,12 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
 
   const mapDivRef        = useRef(null);
   const mapObjRef        = useRef(null);
-  const markerRef        = useRef(null);
   const debounceRef      = useRef(null);
   const initialCoordsRef = useRef(coords); // captured once, for map init only
 
-  const placeMarker = (maps, map, lat, lng, { pan = true, zoom } = {}) => {
-    const position = { lat, lng };
-    if (!markerRef.current) {
-      markerRef.current = new maps.Marker({ position, map, draggable: true });
-      markerRef.current.addListener("dragend", () => {
-        const pos = markerRef.current.getPosition();
-        setCoords({ lat: pos.lat(), lng: pos.lng() });
-      });
-    } else {
-      markerRef.current.setPosition(position);
-    }
-    if (pan) map.panTo(position);
-    if (zoom) map.setZoom(zoom);
-    setCoords({ lat, lng });
-  };
-
+  // Uber-style picker: the pin is a fixed graphic centered over the map, and
+  // the map itself is what the person drags/zooms. Whatever ends up under
+  // the pin (the map's center) becomes the saved coordinates.
   useEffect(() => {
     let cancelled = false;
 
@@ -153,14 +139,12 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           disableDefaultUI: true,
           zoomControl: true,
           clickableIcons: false,
+          gestureHandling: "greedy",
         });
         mapObjRef.current = map;
         setMapReady(true);
 
-        if (startCoords) {
-          // Editing an existing address — drop the pin where it already was.
-          placeMarker(maps, map, startCoords.lat, startCoords.lng, { pan: false });
-        } else if (navigator.geolocation) {
+        if (!startCoords && navigator.geolocation) {
           // New address — default to the user's current location if granted;
           // otherwise the map just stays on the continental-US view.
           navigator.geolocation.getCurrentPosition(
@@ -174,8 +158,11 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           );
         }
 
-        map.addListener("click", (e) => {
-          placeMarker(maps, map, e.latLng.lat(), e.latLng.lng(), { pan: false });
+        // Fires after any pan/zoom/programmatic move settles — this is what
+        // keeps `coords` in sync with whatever the center pin points at.
+        map.addListener("idle", () => {
+          const c = map.getCenter();
+          if (c) setCoords({ lat: c.lat(), lng: c.lng() });
         });
       })
       .catch((e) => setMapError(e.message || "Couldn't load the map"));
@@ -211,8 +198,9 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       const result = data.results?.[0];
       const p      = parseAddressComponents(result);
       setParsed(p);
-      if (p.lat != null && mapObjRef.current && window.google?.maps) {
-        placeMarker(window.google.maps, mapObjRef.current, p.lat, p.lng, { pan: true, zoom: 18 });
+      if (p.lat != null && mapObjRef.current) {
+        mapObjRef.current.panTo({ lat: p.lat, lng: p.lng });
+        mapObjRef.current.setZoom(18);
       }
     } catch {
       setParsed(null);
@@ -237,8 +225,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
     setSaving(false);
   };
 
-  const fieldBoxStyle = { flexShrink: 0, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "9px 14px" };
-  const fieldLabelStyle = { fontSize: 9.5, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 };
+  const fieldBoxStyle = { flexShrink: 0, background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, padding: "11px 14px" };
   const fieldStyle = { border: "none", outline: "none", background: "transparent", fontSize: 14.5, color: TEXT, fontFamily: "inherit", width: "100%", boxSizing: "border-box" };
 
   return (
@@ -249,21 +236,19 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8, padding: "12px 20px 0" }}>
-        {/* Name — its own box */}
+        {/* Name */}
         <div style={fieldBoxStyle}>
-          <div style={fieldLabelStyle}>Name</div>
-          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Home, Work, etc." style={fieldStyle} />
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Name (Home, Work, etc.)" style={fieldStyle} />
         </div>
 
-        {/* Address — its own box */}
+        {/* Address */}
         <div style={{ ...fieldBoxStyle, position: "relative", zIndex: 5 }}>
-          <div style={fieldLabelStyle}>Address</div>
           <input
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
-            placeholder="Search for your address…"
+            placeholder="Address"
             style={fieldStyle}
           />
           {focused && (suggestions.length > 0 || loadingSuggestions) && (
@@ -284,27 +269,35 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           )}
         </div>
 
-        {/* Unit — its own box */}
+        {/* Unit */}
         <div style={fieldBoxStyle}>
-          <div style={fieldLabelStyle}>Unit / Apt (optional)</div>
-          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Apt 4B, Suite 200, etc." style={fieldStyle} />
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit / Apt (optional)" style={fieldStyle} />
         </div>
 
-        {/* Notes — its own box */}
+        {/* Notes */}
         <div style={fieldBoxStyle}>
-          <div style={fieldLabelStyle}>Notes</div>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="Gate code, entrance, delivery instructions…"
-            rows={2}
+            placeholder="Notes (gate code, entrance, delivery instructions…)"
+            rows={1}
             style={{ ...fieldStyle, resize: "none", lineHeight: 1.4 }}
           />
         </div>
 
-        {/* Map — fills whatever vertical space is left */}
+        {/* Map — Uber-style fixed center pin; drag the map to move it */}
         <div style={{ flex: 1, minHeight: 90, position: "relative", borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", background: CARD }}>
           <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
+
+          {mapReady && !mapError && (
+            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -100%)", pointerEvents: "none", zIndex: 10 }}>
+              <svg width="30" height="42" viewBox="0 0 30 42" fill="none">
+                <path d="M15 41C15 41 28.5 24.5 28.5 14.5C28.5 6.7 22.3 1 15 1C7.7 1 1.5 6.7 1.5 14.5C1.5 24.5 15 41 15 41Z" fill={ACCENT2} stroke="#fff" strokeWidth="2"/>
+                <circle cx="15" cy="14.5" r="5.5" fill="#fff"/>
+              </svg>
+            </div>
+          )}
+
           {!mapReady && !mapError && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: MUTED }}>Loading map…</div>
           )}
@@ -312,10 +305,8 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#C0392B", padding: 24, textAlign: "center", lineHeight: 1.5 }}>{mapError}</div>
           )}
         </div>
-        <div style={{ flexShrink: 0, fontSize: 10.5, color: MUTED, margin: "0 2px 8px", lineHeight: 1.4 }}>
-          {parsed
-            ? "Drag the pin or tap the map to fine-tune the exact spot"
-            : "Search for an address above, or tap the map to drop a pin"}
+        <div style={{ flexShrink: 0, fontSize: 10.5, color: MUTED, margin: "0 2px 8px", lineHeight: 1.4, textAlign: "center" }}>
+          Move the map so the pin points to your exact location
         </div>
       </div>
 
@@ -458,28 +449,29 @@ function DraggableAddressList({ addresses, onReorder, onEdit, onDelete }) {
 
 // ── AddressesScreen ────────────────────────────────────────────────────────────
 function AddressesScreen({ onBack, addresses = [], addAddress, updateAddress, deleteAddress, reorderAddresses }) {
-  const [adding,      setAdding]      = useState(false);
-  const [editingAddr, setEditingAddr] = useState(null);
+  // Single state slot drives the form: null = closed, "new" = add mode,
+  // an address object = edit mode. Both cases render the exact same
+  // AddAddressScreen — there's no separate "add screen" vs "edit screen".
+  const [formTarget, setFormTarget] = useState(null);
 
-  const handleAdd = async (fields) => {
-    await addAddress?.(fields);
-    setAdding(false);
-  };
-
-  const handleUpdate = async (fields) => {
-    await updateAddress?.(fields.id, fields);
-    setEditingAddr(null);
+  const handleSave = async (fields) => {
+    if (fields.id) await updateAddress?.(fields.id, fields);
+    else await addAddress?.(fields);
+    setFormTarget(null);
   };
 
   const handleDelete = async (id) => {
     await deleteAddress?.(id);
   };
 
-  if (adding) {
-    return <AddAddressScreen onCancel={() => setAdding(false)} onSave={handleAdd} />;
-  }
-  if (editingAddr) {
-    return <AddAddressScreen initial={editingAddr} onCancel={() => setEditingAddr(null)} onSave={handleUpdate} />;
+  if (formTarget) {
+    return (
+      <AddAddressScreen
+        initial={formTarget === "new" ? null : formTarget}
+        onCancel={() => setFormTarget(null)}
+        onSave={handleSave}
+      />
+    );
   }
 
   return (
@@ -498,7 +490,7 @@ function AddressesScreen({ onBack, addresses = [], addAddress, updateAddress, de
           <DraggableAddressList
             addresses={addresses}
             onReorder={reorderAddresses}
-            onEdit={setEditingAddr}
+            onEdit={setFormTarget}
             onDelete={handleDelete}
           />
           <div style={{ fontSize: 11, color: MUTED, margin: "8px 4px 0", lineHeight: 1.5 }}>
@@ -515,7 +507,7 @@ function AddressesScreen({ onBack, addresses = [], addAddress, updateAddress, de
 
       <div style={{ margin: "0 20px" }}>
         <button
-          onClick={() => setAdding(true)}
+          onClick={() => setFormTarget("new")}
           style={{ width: "100%", padding: "14px", borderRadius: 16, background: "#FFF", border: `1.5px dashed ${ACCENT2}55`, fontSize: 14, fontWeight: 700, color: ACCENT2, cursor: "pointer", fontFamily: "inherit" }}
         >
           + Add Address

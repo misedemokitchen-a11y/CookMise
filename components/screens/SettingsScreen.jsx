@@ -96,12 +96,34 @@ function parseAddressComponents(result) {
 }
 
 // ── AddAddressScreen ───────────────────────────────────────────────────────────
-// Map-first address entry: opens centered on the user's current location (or a
-// continental-US view if location isn't available/granted), with a floating
-// search bar. Selecting a suggestion pans/zooms the map and drops a draggable
-// pin; the pin can be dragged to fine-tune the exact spot before saving.
+// The map is always visible: it defaults to a continental-US view until an
+// address is chosen (search result, or an existing saved address when
+// editing), then pans/zooms there. It's an Uber/Lyft-style fixed center-pin
+// picker: the person drags the map itself and whatever ends up under the pin
+// is the saved location.
+//
+// This still uses the Google Maps JavaScript API — the "cleaner" look apps
+// like Uber/Lyft have comes from custom map styling (fewer POI/business
+// labels, muted colors, no transit clutter), not a different mapping API.
 const USA_CENTER = { lat: 39.8283, lng: -98.5795 };
 const USA_ZOOM   = 4;
+
+const MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#F5F3EE" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8A8880" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative.locality", elementType: "labels", stylers: [{ visibility: "on" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#EDE9E2" }] },
+  { featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#CFE3D6" }] },
+  { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#EAF0E7" }] },
+];
 
 function AddAddressScreen({ onCancel, onSave, initial = null }) {
   const [label,               setLabel]               = useState(initial?.label || "");
@@ -117,14 +139,11 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
   const [mapReady,             setMapReady]             = useState(false);
   const [mapError,             setMapError]             = useState(null);
 
-  const mapDivRef        = useRef(null);
-  const mapObjRef        = useRef(null);
-  const debounceRef      = useRef(null);
-  const initialCoordsRef = useRef(coords); // captured once, for map init only
+  const mapDivRef         = useRef(null);
+  const mapObjRef         = useRef(null);
+  const debounceRef       = useRef(null);
+  const initialCoordsRef  = useRef(coords); // captured once, for the initial map center only
 
-  // Uber-style picker: the pin is a fixed graphic centered over the map, and
-  // the map itself is what the person drags/zooms. Whatever ends up under
-  // the pin (the map's center) becomes the saved coordinates.
   useEffect(() => {
     let cancelled = false;
 
@@ -140,26 +159,13 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           zoomControl: true,
           clickableIcons: false,
           gestureHandling: "greedy",
+          styles: MAP_STYLE,
         });
         mapObjRef.current = map;
         setMapReady(true);
 
-        if (!startCoords && navigator.geolocation) {
-          // New address — default to the user's current location if granted;
-          // otherwise the map just stays on the continental-US view.
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              if (cancelled) return;
-              map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-              map.setZoom(12);
-            },
-            () => {},
-            { timeout: 5000 }
-          );
-        }
-
-        // Fires after any pan/zoom/programmatic move settles — this is what
-        // keeps `coords` in sync with whatever the center pin points at.
+        // Fires after any pan/zoom settles — keeps `coords` in sync with
+        // whatever the center pin points at.
         map.addListener("idle", () => {
           const c = map.getCenter();
           if (c) setCoords({ lat: c.lat(), lng: c.lng() });
@@ -198,12 +204,18 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
       const result = data.results?.[0];
       const p      = parseAddressComponents(result);
       setParsed(p);
-      if (p.lat != null && mapObjRef.current) {
-        mapObjRef.current.panTo({ lat: p.lat, lng: p.lng });
-        mapObjRef.current.setZoom(18);
+      if (p.lat != null) {
+        setCoords({ lat: p.lat, lng: p.lng });
+        if (mapObjRef.current) {
+          mapObjRef.current.panTo({ lat: p.lat, lng: p.lng });
+          mapObjRef.current.setZoom(18);
+        }
+      } else {
+        setCoords(null);
       }
     } catch {
       setParsed(null);
+      setCoords(null);
     }
     setLoadingSuggestions(false);
   };
@@ -285,7 +297,7 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           />
         </div>
 
-        {/* Map — Uber-style fixed center pin; drag the map to move it */}
+        {/* Map — always visible; defaults to a continental-US view until an address is chosen */}
         <div style={{ flex: 1, minHeight: 90, position: "relative", borderRadius: 14, border: `1px solid ${BORDER}`, overflow: "hidden", background: CARD }}>
           <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
 
@@ -306,7 +318,9 @@ function AddAddressScreen({ onCancel, onSave, initial = null }) {
           )}
         </div>
         <div style={{ flexShrink: 0, fontSize: 10.5, color: MUTED, margin: "0 2px 8px", lineHeight: 1.4, textAlign: "center" }}>
-          Move the map so the pin points to your exact location
+          {parsed
+            ? "Move the map so the pin points to your exact location"
+            : "Search for an address above to get started"}
         </div>
       </div>
 

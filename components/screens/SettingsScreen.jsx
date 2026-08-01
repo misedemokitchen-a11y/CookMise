@@ -1,9 +1,8 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
-import { LocationMapPicker } from "@/components/ui/LocationMapPicker";
-
+import { loadGoogleMaps } from "@/lib/loadGoogleMaps";
 
 // ── ProfileField helper ───────────────────────────────────────────────────────
 function ProfileField({ label, fieldKey, placeholder, type = "text", value, focused, onChange, onFocus, onBlur }) {
@@ -78,7 +77,7 @@ function DietScreen({ onBack, dietaryPrefs = {}, saveDiet }) {
 }
 
 // ── parseAddressComponents ──────────────────────────────────────────────────
-// Splits a Google geocode result into street / city / postcode.
+// Splits a Google geocode result into street / city / postcode / lat / lng.
 function parseAddressComponents(result) {
   if (!result) return { street: "", city: "", postcode: "", lat: null, lng: null };
   const comps = result.address_components || [];
@@ -96,160 +95,208 @@ function parseAddressComponents(result) {
   };
 }
 
-// ── AddressAutocomplete ──────────────────────────────────────────────────────
-// Google Places fill-as-you-type input, reused from OrderScreen's pattern.
-function AddressAutocomplete({ value, onChange, onSelect, placeholder }) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [loading,     setLoading]     = useState(false);
-  const [focused,     setFocused]     = useState(false);
-  const debounceRef = useRef(null);
+// ── AddAddressScreen ───────────────────────────────────────────────────────────
+// Map-first address entry: opens centered on the user's current location (or a
+// continental-US view if location isn't available/granted), with a floating
+// search bar. Selecting a suggestion pans/zooms the map and drops a draggable
+// pin; the pin can be dragged to fine-tune the exact spot before saving.
+const USA_CENTER = { lat: 39.8283, lng: -98.5795 };
+const USA_ZOOM   = 4;
+
+function AddAddressScreen({ onCancel, onSave }) {
+  const [label,               setLabel]               = useState("Home");
+  const [query,                setQuery]                = useState("");
+  const [suggestions,          setSuggestions]          = useState([]);
+  const [loadingSuggestions,   setLoadingSuggestions]   = useState(false);
+  const [focused,              setFocused]              = useState(false);
+  const [parsed,               setParsed]               = useState(null); // { street, city, postcode }
+  const [coords,               setCoords]               = useState(null); // { lat, lng }
+  const [saving,               setSaving]               = useState(false);
+  const [mapReady,             setMapReady]             = useState(false);
+  const [mapError,             setMapError]             = useState(null);
+
+  const mapDivRef    = useRef(null);
+  const mapObjRef    = useRef(null);
+  const markerRef    = useRef(null);
+  const debounceRef  = useRef(null);
+
+  const placeMarker = (maps, map, lat, lng, { pan = true, zoom } = {}) => {
+    const position = { lat, lng };
+    if (!markerRef.current) {
+      markerRef.current = new maps.Marker({ position, map, draggable: true });
+      markerRef.current.addListener("dragend", () => {
+        const pos = markerRef.current.getPosition();
+        setCoords({ lat: pos.lat(), lng: pos.lng() });
+      });
+    } else {
+      markerRef.current.setPosition(position);
+    }
+    if (pan) map.panTo(position);
+    if (zoom) map.setZoom(zoom);
+    setCoords({ lat, lng });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadGoogleMaps()
+      .then((maps) => {
+        if (cancelled || !mapDivRef.current) return;
+
+        const map = new maps.Map(mapDivRef.current, {
+          center: USA_CENTER,
+          zoom: USA_ZOOM,
+          disableDefaultUI: true,
+          zoomControl: true,
+          clickableIcons: false,
+        });
+        mapObjRef.current = map;
+        setMapReady(true);
+
+        // Default to the user's current location if they grant permission;
+        // otherwise the map just stays on the continental-US view.
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (cancelled) return;
+              map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+              map.setZoom(12);
+            },
+            () => {},
+            { timeout: 5000 }
+          );
+        }
+
+        map.addListener("click", (e) => {
+          placeMarker(maps, map, e.latLng.lat(), e.latLng.lng(), { pan: false });
+        });
+      })
+      .catch((e) => setMapError(e.message || "Couldn't load the map"));
+
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchSuggestions = async (val) => {
     if (!val.trim()) { setSuggestions([]); return; }
-    setLoading(true);
+    setLoadingSuggestions(true);
     try {
       const res  = await fetch(`/api/places?type=autocomplete&input=${encodeURIComponent(val)}`);
       const data = await res.json();
       setSuggestions(data.predictions?.map(p => ({ place_id: p.place_id, description: p.description })) || []);
     } catch { setSuggestions([]); }
-    setLoading(false);
+    setLoadingSuggestions(false);
   };
 
-  const handleChange = (val) => {
-    onChange(val);
+  const handleQueryChange = (val) => {
+    setQuery(val);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(val), 250);
   };
 
-  const handleSelect = async (s) => {
+  const handleSelectSuggestion = async (s) => {
     setSuggestions([]);
-    setLoading(true);
+    setQuery(s.description);
+    setLoadingSuggestions(true);
     try {
       const res    = await fetch(`/api/places?type=geocode&input=${encodeURIComponent(s.description)}`);
       const data   = await res.json();
       const result = data.results?.[0];
-      onChange(s.description);
-      onSelect?.(parseAddressComponents(result));
+      const p      = parseAddressComponents(result);
+      setParsed(p);
+      if (p.lat != null && mapObjRef.current && window.google?.maps) {
+        placeMarker(window.google.maps, mapObjRef.current, p.lat, p.lng, { pan: true, zoom: 18 });
+      }
     } catch {
-      onChange(s.description);
-      onSelect?.(null);
+      setParsed(null);
     }
-    setLoading(false);
+    setLoadingSuggestions(false);
   };
-
-  return (
-    <div style={{ position: "relative" }}>
-      <input
-        value={value || ""}
-        onChange={e => handleChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
-        placeholder={placeholder}
-        style={{ border: "none", outline: "none", background: "transparent", fontSize: 15, color: TEXT, fontFamily: "inherit", width: "100%" }}
-      />
-      {focused && (suggestions.length > 0 || loading) && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: -16, right: -16, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 8px 28px rgba(0,0,0,0.14)", zIndex: 300, overflow: "hidden" }}>
-          {loading && !suggestions.length
-            ? <div style={{ padding: "12px 16px", fontSize: 13, color: MUTED }}>Searching…</div>
-            : suggestions.map((s, i) => (
-              <div key={s.place_id}>
-                <div onMouseDown={() => handleSelect(s)} onTouchStart={() => handleSelect(s)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", cursor: "pointer" }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  <span style={{ fontSize: 13, color: TEXT, lineHeight: 1.4 }}>{s.description}</span>
-                </div>
-                {i < suggestions.length - 1 && <div style={{ height: 1, background: BORDER, marginLeft: 38 }} />}
-              </div>
-            ))
-          }
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── AddAddressPanel ───────────────────────────────────────────────────────────
-// ── AddAddressPanel ───────────────────────────────────────────────────────────
-function AddAddressPanel({ onCancel, onSave }) {
-  const [label,           setLabel]           = useState("Home");
-  const [query,           setQuery]           = useState("");
-  const [parsed,          setParsed]          = useState(null); // { street, city, postcode, lat, lng }
-  const [confirmedCoords, setConfirmedCoords] = useState(null); // { lat, lng } once fine-tuned on the map
-  const [showMap,         setShowMap]         = useState(false);
-  const [saving,          setSaving]          = useState(false);
-
-  const handleSelect = (p) => {
-    setParsed(p);
-    setConfirmedCoords(null); // reset fine-tuning when a new address is picked
-  };
-
-  const coords = confirmedCoords || (parsed && parsed.lat != null ? { lat: parsed.lat, lng: parsed.lng } : null);
 
   const handleSave = async () => {
-    if (!parsed) return;
+    if (!parsed || !coords) return;
     setSaving(true);
     await onSave({
-      label:   label.trim() || "Home",
-      street:  parsed.street,
-      city:    parsed.city,
+      label:    label.trim() || "Home",
+      street:   parsed.street,
+      city:     parsed.city,
       postcode: parsed.postcode,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
+      lat: coords.lat,
+      lng: coords.lng,
     });
     setSaving(false);
   };
 
-  if (showMap && coords) {
-    return (
-      <LocationMapPicker
-        lat={coords.lat}
-        lng={coords.lng}
-        addressLabel={query}
-        onCancel={() => setShowMap(false)}
-        onConfirm={(c) => { setConfirmedCoords(c); setShowMap(false); }}
-      />
-    );
-  }
-
   return (
-    <div style={{ background: CARD, borderRadius: 18, border: `1px solid ${BORDER}`, padding: 16, margin: "0 20px 20px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Label</div>
-      <input
-        value={label}
-        onChange={e => setLabel(e.target.value)}
-        placeholder="Home, Work, etc."
-        style={{ border: "none", outline: "none", background: "#FAFAF8", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: TEXT, fontFamily: "inherit", width: "100%", marginBottom: 14, boxSizing: "border-box" }}
-      />
-
-      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Address</div>
-      <div style={{ background: "#FAFAF8", borderRadius: 10, padding: "10px 12px" }}>
-        <AddressAutocomplete value={query} onChange={setQuery} onSelect={handleSelect} placeholder="Start typing an address…" />
+    <div style={{ position: "absolute", inset: 0, background: BG, zIndex: 1000, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "44px 20px 12px", display: "flex", alignItems: "center", gap: 14, background: CARD, borderBottom: `1px solid ${BORDER}`, zIndex: 2 }}>
+        <button onClick={onCancel} style={{ width: 36, height: 36, borderRadius: 12, background: BG, border: `1px solid ${BORDER}`, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>←</button>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: TEXT, margin: 0, fontFamily: "Georgia, serif" }}>Add Address</h2>
       </div>
 
-      {parsed && (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-            📍 {parsed.street}{parsed.city ? `, ${parsed.city}` : ""}{parsed.postcode ? `, ${parsed.postcode}` : ""}
+      <div style={{ flex: 1, position: "relative" }}>
+        <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
+        {!mapReady && !mapError && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: BG, fontSize: 13, color: MUTED }}>Loading map…</div>
+        )}
+        {mapError && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: BG, fontSize: 13, color: "#C0392B", padding: 24, textAlign: "center", lineHeight: 1.5 }}>{mapError}</div>
+        )}
+
+        {/* Floating search bar over the map */}
+        <div style={{ position: "absolute", top: 14, left: 14, right: 14, zIndex: 3 }}>
+          <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 6px 20px rgba(0,0,0,0.12)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <input
+              value={query}
+              onChange={e => handleQueryChange(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              placeholder="Search for your address…"
+              style={{ border: "none", outline: "none", background: "transparent", fontSize: 15, color: TEXT, fontFamily: "inherit", width: "100%" }}
+            />
           </div>
-          {coords && (
-            <button
-              onClick={() => setShowMap(true)}
-              style={{ marginTop: 8, width: "100%", padding: "10px", borderRadius: 10, background: confirmedCoords ? ACCENT2 + "12" : "#FAFAF8", border: `1px solid ${confirmedCoords ? ACCENT2 + "40" : BORDER}`, fontSize: 12.5, fontWeight: 700, color: confirmedCoords ? ACCENT2 : TEXT, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              {confirmedCoords ? "✓ Pin fine-tuned — tap to adjust again" : "🗺️  Fine-tune exact location on map"}
-            </button>
+          {focused && (suggestions.length > 0 || loadingSuggestions) && (
+            <div style={{ marginTop: 6, background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: "0 8px 28px rgba(0,0,0,0.14)", overflow: "hidden" }}>
+              {loadingSuggestions && !suggestions.length
+                ? <div style={{ padding: "12px 16px", fontSize: 13, color: MUTED }}>Searching…</div>
+                : suggestions.map((s, i) => (
+                  <div key={s.place_id}>
+                    <div onMouseDown={() => handleSelectSuggestion(s)} onTouchStart={() => handleSelectSuggestion(s)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", cursor: "pointer" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <span style={{ fontSize: 13, color: TEXT, lineHeight: 1.4 }}>{s.description}</span>
+                    </div>
+                    {i < suggestions.length - 1 && <div style={{ height: 1, background: BORDER, marginLeft: 38 }} />}
+                  </div>
+                ))
+              }
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: "12px", borderRadius: 12, background: "#F4F2EE", border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={!parsed || saving}
-          style={{ flex: 1, padding: "12px", borderRadius: 12, background: !parsed ? BORDER : "#385348", border: "none", fontSize: 14, fontWeight: 700, color: !parsed ? MUTED : "#fff", cursor: !parsed ? "default" : "pointer", fontFamily: "inherit" }}
-        >
-          {saving ? "Saving…" : "Add Address"}
-        </button>
+      <div style={{ padding: 16, background: CARD, borderTop: `1px solid ${BORDER}` }}>
+        {parsed && (
+          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, marginBottom: 10 }}>
+            📍 {parsed.street}{parsed.city ? `, ${parsed.city}` : ""}{parsed.postcode ? `, ${parsed.postcode}` : ""}
+            {coords && <span style={{ display: "block", marginTop: 2, fontSize: 11 }}>Drag the pin to fine-tune the exact spot</span>}
+          </div>
+        )}
+        <input
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          placeholder="Label (Home, Work, etc.)"
+          style={{ border: "none", outline: "none", background: "#FAFAF8", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: TEXT, fontFamily: "inherit", width: "100%", marginBottom: 12, boxSizing: "border-box" }}
+        />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: "13px", borderRadius: 12, background: "#F4F2EE", border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={!parsed || !coords || saving}
+            style={{ flex: 1, padding: "13px", borderRadius: 12, background: (!parsed || !coords) ? BORDER : "#385348", border: "none", fontSize: 14, fontWeight: 700, color: (!parsed || !coords) ? MUTED : "#fff", cursor: (!parsed || !coords) ? "default" : "pointer", fontFamily: "inherit" }}
+          >
+            {saving ? "Saving…" : "Add Address"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -321,8 +368,6 @@ function DraggableAddressList({ addresses, onReorder, onRename, onDelete }) {
 
   const onPointerDown = (e, index) => {
     orderRef.current = addresses;
-
-  orderRef.current = addresses;
     dragIndexRef.current = index;
     setDragIndex(index);
     setDragOrder(addresses);
@@ -409,6 +454,10 @@ function AddressesScreen({ onBack, addresses = [], addAddress, renameAddress, de
     await deleteAddress?.(id);
   };
 
+  if (adding) {
+    return <AddAddressScreen onCancel={() => setAdding(false)} onSave={handleAdd} />;
+  }
+
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 130, background: BG }}>
       <div style={{ padding: "44px 20px 16px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -434,24 +483,20 @@ function AddressesScreen({ onBack, addresses = [], addAddress, renameAddress, de
         </div>
       )}
 
-      {addresses.length === 0 && !adding && (
+      {addresses.length === 0 && (
         <div style={{ margin: "0 20px 20px", padding: "24px 16px", textAlign: "center", background: CARD, borderRadius: 18, border: `1px solid ${BORDER}` }}>
           <div style={{ fontSize: 13, color: MUTED }}>No addresses yet. Add one to get started.</div>
         </div>
       )}
 
-      {adding ? (
-        <AddAddressPanel onCancel={() => setAdding(false)} onSave={handleAdd} />
-      ) : (
-        <div style={{ margin: "0 20px" }}>
-          <button
-            onClick={() => setAdding(true)}
-            style={{ width: "100%", padding: "14px", borderRadius: 16, background: "#FFF", border: `1.5px dashed ${ACCENT2}55`, fontSize: 14, fontWeight: 700, color: ACCENT2, cursor: "pointer", fontFamily: "inherit" }}
-          >
-            + Add Address
-          </button>
-        </div>
-      )}
+      <div style={{ margin: "0 20px" }}>
+        <button
+          onClick={() => setAdding(true)}
+          style={{ width: "100%", padding: "14px", borderRadius: 16, background: "#FFF", border: `1.5px dashed ${ACCENT2}55`, fontSize: 14, fontWeight: 700, color: ACCENT2, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          + Add Address
+        </button>
+      </div>
     </div>
   );
 }

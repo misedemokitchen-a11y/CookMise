@@ -2,8 +2,6 @@
 import { useState, useRef } from "react";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 import { supabase } from "@/lib/supabase";
-import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
-import { supabase } from "@/lib/supabase";
 import { LocationMapPicker } from "@/components/ui/LocationMapPicker";
 
 

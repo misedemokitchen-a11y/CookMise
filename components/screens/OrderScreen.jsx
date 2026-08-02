@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 
 // ── SwipeableRecipeCard ───────────────────────────────────────────────────────
-function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe, checked, toggleCheck, krogerResults }) {
+function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe, checked, toggleCheck, krogerResults, onSwap }) {
   const [swipeX,    setSwipeX]    = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -56,21 +56,31 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
               const kroger = krogerResults?.[ing.name];
               const isUnavailable = kroger?.found === false;
               const isChecked = !isUnavailable && checked[key] !== false; // checked = needs buying; unchecked = already have
+              const opt = kroger?.options?.[kroger.selectedIndex ?? 0];
+              const hasAlternatives = (kroger?.options?.length ?? 0) > 1;
               return (
                 <div key={i}>
                   <div
                     onClick={() => { if (!isUnavailable) toggleCheck(recipe.id, i); }}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: isUnavailable ? "default" : "pointer", opacity: isUnavailable ? 0.5 : 1 }}
                   >
-                    {kroger?.image && (
-                      <img src={kroger.image} alt={ing.name} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    {opt?.image && (
+                      <img src={opt.image} alt={ing.name} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: isUnavailable || !isChecked ? MUTED : TEXT, textDecoration: !isUnavailable && !isChecked ? "line-through" : "none", transition: "all 0.15s ease" }}>{ing.name}</div>
-                      <div style={{ fontSize: 11, color: MUTED, marginTop: 1, display: "flex", gap: 8 }}>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 1, display: "flex", alignItems: "center", gap: 8 }}>
                         <span>{ing.qty}</span>
-                        {kroger?.found && kroger?.price && <span style={{ color: ACCENT2, fontWeight: 600 }}>${kroger.price}</span>}
+                        {kroger?.found && opt?.price && <span style={{ color: ACCENT2, fontWeight: 600 }}>${opt.price}</span>}
                         {isUnavailable && <span style={{ color: "#E53935" }}>Not at this store</span>}
+                        {hasAlternatives && (
+                          <span
+                            onClick={e => { e.stopPropagation(); onSwap?.(ing.name); }}
+                            style={{ color: ACCENT, fontWeight: 600, textDecoration: "underline", cursor: "pointer" }}
+                          >
+                            Swap ({kroger.options.length})
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, border: `2px solid ${isChecked ? "#2D4A3E" : BORDER}`, background: isChecked ? "#2D4A3E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}>
@@ -83,6 +93,48 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
             })}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── ProductSwapSheet ──────────────────────────────────────────────────────────
+// Bottom sheet listing alternative products for one ingredient, so the
+// customer can swap the auto-picked match for a different brand/size.
+function ProductSwapSheet({ name, result, onSelect, onClose }) {
+  const options = result?.options ?? [];
+  return (
+    <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 300, display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxHeight: "70%", background: CARD, borderRadius: "24px 24px 0 0", boxShadow: "0 -8px 32px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: BORDER, margin: "0 auto 14px" }} />
+          <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 2 }}>Choose an option for</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{name}</div>
+        </div>
+        <div style={{ overflowY: "auto", padding: "6px 12px 20px" }}>
+          {options.map((opt, i) => {
+            const isSelected = i === (result.selectedIndex ?? 0);
+            return (
+              <div
+                key={i}
+                onClick={() => onSelect(i)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 14, cursor: "pointer", background: isSelected ? ACCENT2 + "12" : "transparent" }}
+              >
+                <div style={{ width: 44, height: 44, borderRadius: 10, overflow: "hidden", flexShrink: 0, background: BORDER, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {opt.image ? <img src={opt.image} alt={opt.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🛒"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT, lineHeight: 1.3 }}>{opt.name || "Unnamed product"}</div>
+                  {opt.brand && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>{opt.brand}</div>}
+                </div>
+                {opt.price != null && <div style={{ fontSize: 14, fontWeight: 700, color: ACCENT2, flexShrink: 0 }}>${opt.price}</div>}
+                <div style={{ width: 20, height: 20, borderRadius: 10, flexShrink: 0, border: `2px solid ${isSelected ? "#2D4A3E" : BORDER}`, background: isSelected ? "#2D4A3E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {isSelected && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -102,6 +154,7 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   const [loadingIngredients, setLoadingIngredients] = useState(false);
   const [krogerStores,       setKrogerStores]       = useState([]);
   const [krogerResults,      setKrogerResults]      = useState({});
+  const [swapTarget,         setSwapTarget]         = useState(null); // ingredient name whose swap sheet is open
   const [userCoords,         setUserCoords]         = useState(null);
   const addressInputRef = useRef(null);
   const debounceRef     = useRef(null);
@@ -135,14 +188,19 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
 
         const results = await Promise.all(
           unique.map(async (name) => {
-            const res     = await fetch(`/api/kroger?type=product&query=${encodeURIComponent(name)}&locationId=${locationId}`);
-            const data    = await res.json();
-            const product = data.data?.[0];
+            const res      = await fetch(`/api/kroger?type=product&query=${encodeURIComponent(name)}&locationId=${locationId}`);
+            const data     = await res.json();
+            const products = data.data || [];
+            const options  = products.map(p => ({
+              name:  p?.description,
+              brand: p?.brand,
+              price: p?.items?.[0]?.price?.regular,
+              image: p?.images?.find(i => i.perspective === "front")?.sizes?.find(s => s.size === "thumbnail")?.url,
+            }));
             return [name, {
-              found: !!product,
-              name:  product?.description,
-              price: product?.items?.[0]?.price?.regular,
-              image: product?.images?.find(i => i.perspective === "front")?.sizes?.find(s => s.size === "thumbnail")?.url,
+              found: options.length > 0,
+              options,
+              selectedIndex: 0,
             }];
           })
         );
@@ -217,6 +275,11 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
     });
   };
 
+  // Swap which product option is used for a given ingredient name.
+  const selectProductOption = (name, index) => {
+    setKrogerResults(prev => (prev[name] ? { ...prev, [name]: { ...prev[name], selectedIndex: index } } : prev));
+  };
+
   // Whether a given (unique) ingredient name is currently checked — looks up
   // the first matching instance across the cart's recipes.
   const isIngredientChecked = (name) => {
@@ -229,10 +292,10 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
 
   const totalIngredients = orderRecipes.reduce((sum, r) => sum + (r.ingredients?.length ?? 0), 0);
   const foundCount       = Object.values(krogerResults).filter(r => r.found).length;
-  const krogerTotal      = Object.entries(krogerResults).reduce(
-    (sum, [name, r]) => (r.price && isIngredientChecked(name) ? sum + r.price : sum),
-    0
-  );
+  const krogerTotal      = Object.entries(krogerResults).reduce((sum, [name, r]) => {
+    const price = r.options?.[r.selectedIndex]?.price;
+    return price && isIngredientChecked(name) ? sum + price : sum;
+  }, 0);
   const selectedStore    = krogerStores[selected];
 
   const handleConfirmOrder = async () => {
@@ -334,7 +397,7 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
         {/* Recipe cards */}
         <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
           {orderRecipes.map((recipe, idx) => (
-            <SwipeableRecipeCard key={recipe.id} recipe={recipe} idx={idx} expanded={!!expanded[idx]} toggleExpand={toggleExpand} removeRecipe={removeRecipe} checked={checked} toggleCheck={toggleCheck} krogerResults={krogerResults} />
+            <SwipeableRecipeCard key={recipe.id} recipe={recipe} idx={idx} expanded={!!expanded[idx]} toggleExpand={toggleExpand} removeRecipe={removeRecipe} checked={checked} toggleCheck={toggleCheck} krogerResults={krogerResults} onSwap={setSwapTarget} />
           ))}
         </div>
 
@@ -410,6 +473,15 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </>)}
+
+      {swapTarget && krogerResults[swapTarget] && (
+        <ProductSwapSheet
+          name={swapTarget}
+          result={krogerResults[swapTarget]}
+          onSelect={(index) => { selectProductOption(swapTarget, index); setSwapTarget(null); }}
+          onClose={() => setSwapTarget(null)}
+        />
+      )}
     </div>
   );
 }

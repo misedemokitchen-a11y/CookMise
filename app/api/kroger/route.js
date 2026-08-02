@@ -63,7 +63,7 @@ if (type === "stores") {
     const query      = searchParams.get("query");
     const locationId = searchParams.get("locationId");
     const res = await fetch(
-      `${KROGER_BASE}/products?filter.term=${encodeURIComponent(query)}&filter.locationId=${locationId}&filter.limit=1`,
+      `${KROGER_BASE}/products?filter.term=${encodeURIComponent(query)}&filter.locationId=${locationId}&filter.limit=6`,
       { headers: { "Authorization": `Bearer ${token}` } }
     );
     const data = await res.json();

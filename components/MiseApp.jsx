@@ -52,8 +52,19 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
     addresses, defaultAddress,
     addAddress, updateAddress, deleteAddress, reorderAddresses,
     orderHistory, placeOrder,
-    updateProfile,
+    cartRecipes, setCartRecipes,
+    profileDefaults, updateProfile,
+    loading: userDataLoading,
   } = useUserData(user);
+
+  // Fill the editable profile draft from the saved row / Google account info
+  // once the user's data has finished loading (and again on sign-in).
+  useEffect(() => {
+    if (!user || userDataLoading) return;
+    queueMicrotask(() => {
+      setProfile(prev => ({ ...prev, ...profileDefaults }));
+    });
+  }, [user?.id, userDataLoading]);
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const [screen,         setScreen]         = useState("home");
@@ -61,7 +72,6 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
   const [selectedRecipe, setSelectedRecipe] = useState(recipes[0] || null);
   const [exploreCuisine, setExploreCuisine] = useState(null); // lifted so it survives Explore <-> Recipe navigation
   const [showSettings,   setShowSettings]   = useState(false);
-  const [orderRecipes,   setOrderRecipes]   = useState([]);
 
   // Load Google font
   useEffect(() => {
@@ -90,7 +100,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
   const navScreen = ["home","explore","order","saved"].includes(screen) ? screen : screenHistory.findLast(s => ["home","explore","order","saved"].includes(s)) || "home";
 
   const handleGoToOrder = (recipe) => {
-    setOrderRecipes(prev => prev.find(r => r.id === recipe.id) ? prev : [...prev, recipe]);
+    setCartRecipes(prev => prev.find(r => r.id === recipe.id) ? prev : [...prev, recipe]);
     handleSetScreen("order");
   };
 
@@ -103,7 +113,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
       case "home":    return <HomeScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} showSettings={showSettings} setShowSettings={setShowSettings} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} user={user} profile={profile} setProfile={setProfile} />;
       case "explore": return <ExploreScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} resetRef={exploreResetRef} selectedCuisine={exploreCuisine} setSelectedCuisine={setExploreCuisine} />;
       case "recipe":  return <RecipeScreen recipe={selectedRecipe} setScreen={handleSetScreen} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} goBack={handleGoBack} />;
-      case "order":   return <OrderScreen orderRecipes={orderRecipes} setOrderRecipes={setOrderRecipes} setScreen={handleSetScreen} profile={profile} placeOrder={placeOrder} defaultAddress={defaultAddress} />;
+      case "order":   return <OrderScreen orderRecipes={cartRecipes} setOrderRecipes={setCartRecipes} setScreen={handleSetScreen} profile={profile} placeOrder={placeOrder} defaultAddress={defaultAddress} />;
       case "saved":   return <SavedScreen savedRecipes={savedRecipes} toggleSaved={toggleSaved} setSelectedRecipe={setSelectedRecipe} setScreen={handleSetScreen} />;
       default:        return null;
     }

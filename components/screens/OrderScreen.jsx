@@ -53,7 +53,7 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
           <div>
             {recipe.ingredients?.map((ing, i) => {
               const key = `${recipe.id}-${i}`;
-              const isChecked = !!checked[key];
+              const isChecked = checked[key] !== false; // checked by default; only false once explicitly unchecked
               const kroger = krogerResults?.[ing.name];
               return (
                 <div key={i}>
@@ -190,7 +190,8 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   const toggleCheck = (recipeId, i) => {
     const r      = orderRecipes.find(r => r.id === recipeId);
     const name   = r?.ingredients[i]?.name;
-    const newVal = !checked[`${recipeId}-${i}`];
+    const currentlyChecked = checked[`${recipeId}-${i}`] !== false;
+    const newVal = !currentlyChecked;
     setChecked(prev => {
       const next = { ...prev, [`${recipeId}-${i}`]: newVal };
       orderRecipes.forEach(r => r.ingredients?.forEach((ing, idx) => {
@@ -210,15 +211,31 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
     });
   };
 
+  // Whether a given (unique) ingredient name is currently checked — looks up
+  // the first matching instance across the cart's recipes.
+  const isIngredientChecked = (name) => {
+    for (const r of orderRecipes) {
+      const idx = r.ingredients?.findIndex(ing => ing.name === name) ?? -1;
+      if (idx >= 0) return checked[`${r.id}-${idx}`] !== false;
+    }
+    return true;
+  };
+
   const totalIngredients = orderRecipes.reduce((sum, r) => sum + (r.ingredients?.length ?? 0), 0);
   const foundCount       = Object.values(krogerResults).filter(r => r.found).length;
-  const krogerTotal      = Object.values(krogerResults).reduce((sum, r) => sum + (r.price || 0), 0);
+  const krogerTotal      = Object.entries(krogerResults).reduce(
+    (sum, [name, r]) => (r.price && isIngredientChecked(name) ? sum + r.price : sum),
+    0
+  );
   const selectedStore    = krogerStores[selected];
 
   const handleConfirmOrder = async () => {
+    const checkedIngredients = orderRecipes.flatMap(r =>
+      (r.ingredients ?? []).filter((ing, idx) => checked[`${r.id}-${idx}`] !== false)
+    );
     await placeOrder?.({
       orderRecipes,
-      ingredients:  orderRecipes.flatMap(r => r.ingredients ?? []),
+      ingredients:  checkedIngredients,
       address:      deliveryAddress,
       store:        selectedStore?.name,
       deliveryType: "delivery",

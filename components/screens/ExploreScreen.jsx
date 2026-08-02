@@ -202,9 +202,8 @@ function CuisineDishList({ cuisine, onBack, setScreen, setSelectedRecipe }) {
 }
 
 // ── ExploreScreen ─────────────────────────────────────────────────────────────
-export function ExploreScreen({ setScreen, setSelectedRecipe, resetRef }) {
-  const [search,          setSearch]          = useState("");
-  const [selectedCuisine, setSelectedCuisine] = useState(null);
+export function ExploreScreen({ setScreen, setSelectedRecipe, resetRef, selectedCuisine, setSelectedCuisine }) {
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (resetRef) resetRef.current = () => setSelectedCuisine(null);

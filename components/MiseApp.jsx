@@ -59,6 +59,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
   const [screen,         setScreen]         = useState("home");
   const [screenHistory,  setScreenHistory]  = useState(["home"]);
   const [selectedRecipe, setSelectedRecipe] = useState(recipes[0] || null);
+  const [exploreCuisine, setExploreCuisine] = useState(null); // lifted so it survives Explore <-> Recipe navigation
   const [showSettings,   setShowSettings]   = useState(false);
   const [orderRecipes,   setOrderRecipes]   = useState([]);
 
@@ -100,7 +101,7 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
     if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} addresses={addresses} addAddress={addAddress} updateAddress={updateAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
     switch (screen) {
       case "home":    return <HomeScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} showSettings={showSettings} setShowSettings={setShowSettings} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} user={user} profile={profile} setProfile={setProfile} />;
-      case "explore": return <ExploreScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} resetRef={exploreResetRef} />;
+      case "explore": return <ExploreScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} resetRef={exploreResetRef} selectedCuisine={exploreCuisine} setSelectedCuisine={setExploreCuisine} />;
       case "recipe":  return <RecipeScreen recipe={selectedRecipe} setScreen={handleSetScreen} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} goBack={handleGoBack} />;
       case "order":   return <OrderScreen orderRecipes={orderRecipes} setOrderRecipes={setOrderRecipes} setScreen={handleSetScreen} profile={profile} placeOrder={placeOrder} defaultAddress={defaultAddress} />;
       case "saved":   return <SavedScreen savedRecipes={savedRecipes} toggleSaved={toggleSaved} setSelectedRecipe={setSelectedRecipe} setScreen={handleSetScreen} />;

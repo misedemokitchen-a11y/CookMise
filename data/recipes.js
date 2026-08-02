@@ -118,10 +118,9 @@ const rawRecipes = [
   },
   {
     id: 4,
-    name: "Bowen Yang's Mapo Tofu",
+    name: "Mapo Tofu",
     subtitle: "A spicy, mouth-numbing Sichuan classic",
     cuisine: "Chinese",
-    chef: "Bowen Yang",
     emoji: "🌶️",
     time: 35,
     servings: 4,

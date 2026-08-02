@@ -53,20 +53,24 @@ function SwipeableRecipeCard({ recipe, idx, expanded, toggleExpand, removeRecipe
           <div>
             {recipe.ingredients?.map((ing, i) => {
               const key = `${recipe.id}-${i}`;
-              const isChecked = checked[key] !== false; // checked by default; only false once explicitly unchecked
               const kroger = krogerResults?.[ing.name];
+              const isUnavailable = kroger?.found === false;
+              const isChecked = !isUnavailable && checked[key] !== false; // checked = needs buying; unchecked = already have
               return (
                 <div key={i}>
-                  <div onClick={() => toggleCheck(recipe.id, i)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer" }}>
+                  <div
+                    onClick={() => { if (!isUnavailable) toggleCheck(recipe.id, i); }}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: isUnavailable ? "default" : "pointer", opacity: isUnavailable ? 0.5 : 1 }}
+                  >
                     {kroger?.image && (
                       <img src={kroger.image} alt={ing.name} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500, color: isChecked ? MUTED : TEXT, textDecoration: isChecked ? "line-through" : "none", transition: "all 0.15s ease" }}>{ing.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 500, color: isUnavailable || !isChecked ? MUTED : TEXT, textDecoration: !isUnavailable && !isChecked ? "line-through" : "none", transition: "all 0.15s ease" }}>{ing.name}</div>
                       <div style={{ fontSize: 11, color: MUTED, marginTop: 1, display: "flex", gap: 8 }}>
                         <span>{ing.qty}</span>
                         {kroger?.found && kroger?.price && <span style={{ color: ACCENT2, fontWeight: 600 }}>${kroger.price}</span>}
-                        {kroger?.found === false && <span style={{ color: "#E53935" }}>Not at this store</span>}
+                        {isUnavailable && <span style={{ color: "#E53935" }}>Not at this store</span>}
                       </div>
                     </div>
                     <div style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, border: `2px solid ${isChecked ? "#2D4A3E" : BORDER}`, background: isChecked ? "#2D4A3E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}>
@@ -190,11 +194,13 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   const toggleCheck = (recipeId, i) => {
     const r      = orderRecipes.find(r => r.id === recipeId);
     const name   = r?.ingredients[i]?.name;
+    if (krogerResults?.[name]?.found === false) return; // unavailable — not toggleable
     const currentlyChecked = checked[`${recipeId}-${i}`] !== false;
     const newVal = !currentlyChecked;
     setChecked(prev => {
       const next = { ...prev, [`${recipeId}-${i}`]: newVal };
       orderRecipes.forEach(r => r.ingredients?.forEach((ing, idx) => {
+        if (krogerResults?.[ing.name]?.found === false) return; // unavailable — skip when syncing matches
         if (ingsOverlap(ing.name, name) && !(r.id === recipeId && idx === i)) next[`${r.id}-${idx}`] = newVal;
       }));
       return next;
@@ -231,7 +237,9 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
 
   const handleConfirmOrder = async () => {
     const checkedIngredients = orderRecipes.flatMap(r =>
-      (r.ingredients ?? []).filter((ing, idx) => checked[`${r.id}-${idx}`] !== false)
+      (r.ingredients ?? []).filter((ing, idx) =>
+        checked[`${r.id}-${idx}`] !== false && krogerResults?.[ing.name]?.found !== false
+      )
     );
     await placeOrder?.({
       orderRecipes,

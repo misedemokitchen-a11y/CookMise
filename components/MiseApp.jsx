@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useUserData } from "@/hooks/useUserData";
-import { BG, CARD, BORDER, ROOT_SCREENS } from "@/lib/constants";
+import { BG, CARD, BORDER } from "@/lib/constants";
 import { StatusBar } from "@/components/layout/NavBar";
 import { NavBar } from "@/components/layout/NavBar";
 import { LoginScreen } from "@/components/screens/LoginScreen";
@@ -81,7 +81,6 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
       if (prev.length <= 1) return prev;
       const next   = prev.slice(0, -1);
       const target = next[next.length - 1];
-      if (ROOT_SCREENS.includes(target)) return prev;
       setScreen(target);
       return next;
     });

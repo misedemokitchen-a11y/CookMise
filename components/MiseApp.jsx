@@ -5,7 +5,7 @@ import { useUserData } from "@/hooks/useUserData";
 import { BG, CARD, BORDER } from "@/lib/constants";
 import { StatusBar } from "@/components/layout/NavBar";
 import { NavBar } from "@/components/layout/NavBar";
-import { LoginScreen } from "@/components/screens/LoginScreen";
+import { LoginScreen, ResetPasswordScreen } from "@/components/screens/LoginScreen";
 import { HomeScreen } from "@/components/screens/HomeScreen";
 import { ExploreScreen } from "@/components/screens/ExploreScreen";
 import { RecipeScreen } from "@/components/screens/RecipeScreen";
@@ -21,6 +21,7 @@ export default function MiseApp() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const [loggedIn, setLoggedIn] = useState(false);
   const [user,     setUser]     = useState(null);
+  const [recovering, setRecovering] = useState(false); // opened a password-reset email link
   const [profile,  setProfile]  = useState({ firstName: "", lastName: "", email: "", phone: "", address: "", city: "", postcode: "" });
 
   // Listen for Supabase auth state changes (covers Google redirect return)
@@ -30,6 +31,11 @@ supabase.auth.getSession().then(({ data: { session } }) => {
   if (session?.user) {
     setUser(session.user);
     setLoggedIn(true);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reset") === "1") {
+      setRecovering(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }
 });
 
@@ -128,10 +134,12 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {!loggedIn
             ? <LoginScreen onLogin={(u) => { setUser(u); setLoggedIn(true); }} />
-            : renderScreen()
+            : recovering
+              ? <ResetPasswordScreen onDone={() => setRecovering(false)} />
+              : renderScreen()
           }
         </div>
-        {loggedIn && showNav && (
+        {loggedIn && !recovering && showNav && (
           <NavBar
             active={navScreen}
             setScreen={handleSetScreen}

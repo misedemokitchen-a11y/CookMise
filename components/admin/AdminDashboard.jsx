@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import OrdersTable from "@/components/admin/OrdersTable";
+import AnalyticsTab from "@/components/admin/AnalyticsTab";
+import { parseTs } from "@/lib/dates";
 import { itemsOf } from "@/lib/orderRows";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 
@@ -66,7 +67,7 @@ function OrderCard({ order, onChange, startOpen }) {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, color: TEXT, fontSize: 15 }}>{order.customer?.name || order.customer?.email || "Customer"}</div>
           <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            {new Date(order.created_at).toLocaleString()} · {(order.recipes || []).map(r => r.name).join(", ")}
+            {parseTs(order.created_at).toLocaleString()} · {(order.recipes || []).map(r => r.name).join(", ")}
           </div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -197,7 +198,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {tab === "table" && <OrdersTable orders={orders} onOpen={(id) => { setFocusId(id); setTab("cards"); }} />}
+        {tab === "table" && <AnalyticsTab orders={orders} onOpen={(id) => { setFocusId(id); setTab("cards"); }} />}
 
         {tab === "cards" && (<>
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 14, marginBottom: 16 }}>

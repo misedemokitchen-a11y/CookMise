@@ -290,6 +290,10 @@ export function useUserData(user) {
       );
       if (itemsError) console.error("order_items insert failed (order still saved via items json):", itemsError);
     }
+    const { error: recipesError } = await supabase.from("order_recipes").insert(
+      orderRecipes.map(r => ({ order_id: data.id, recipe_id: r.id, recipe_name: r.name }))
+    );
+    if (recipesError) console.error("order_recipes insert failed (order still saved):", recipesError);
     setOrderHistory(prev => [data, ...prev]);
     await clearCart();
     return data;

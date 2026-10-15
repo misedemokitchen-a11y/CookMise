@@ -11,7 +11,7 @@ export async function GET(request) {
   try {
     const db = getSupabaseAdmin();
     const { data: orders, error } = await db
-      .from("orders").select("*").order("created_at", { ascending: false }).limit(200);
+      .from("orders").select("*").order("created_at", { ascending: false }).limit(1000);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const ids = [...new Set(orders.map(o => o.user_id))];

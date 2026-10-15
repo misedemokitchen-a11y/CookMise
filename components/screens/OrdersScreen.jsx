@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { parseTs } from "@/lib/dates";
 import { loadGoogleMaps } from "@/lib/loadGoogleMaps";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 
@@ -62,7 +63,7 @@ function OrderCard({ order, startOpen }) {
       <div onClick={() => setOpen(o => !o)} style={{ padding: "14px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, color: TEXT, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{names || "Order"}</div>
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{new Date(order.created_at).toLocaleDateString()} · {order.store || "Store"}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{parseTs(order.created_at).toLocaleDateString()} · {order.store || "Store"}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontWeight: 800, color: TEXT }}>{money(order.final_total ?? order.total)}</div>

@@ -20,22 +20,35 @@ export async function GET(request) {
       : { data: [] };
     const byId = Object.fromEntries((profiles || []).map(p => [p.id, p]));
 
-    const withCustomer = await Promise.all(orders.map(async (o) => {
+    // One row per grocery item, grouped by order.
+    const orderIds = orders.map(o => o.id);
+    const { data: itemRows } = orderIds.length
+      ? await db.from("order_items").select("*").in("order_id", orderIds).order("position", { ascending: true })
+      : { data: [] };
+    const itemsByOrder = {};
+    (itemRows || []).forEach(r => { (itemsByOrder[r.order_id] ||= []).push(r); });
+
+    // Customer name/email: profile row first, then the auth account (Google name).
+    const authById = {};
+    await Promise.all(ids.map(async (id) => {
+      const { data } = await db.auth.admin.getUserById(id);
+      if (data?.user) authById[id] = data.user;
+    }));
+
+    const withCustomer = orders.map((o) => {
       const p = byId[o.user_id];
-      let email = p?.email || null;
-      if (!email) {
-        const { data } = await db.auth.admin.getUserById(o.user_id);
-        email = data?.user?.email || null;
-      }
+      const au = authById[o.user_id];
+      const meta = au?.user_metadata || {};
       return {
         ...o,
+        order_items: itemsByOrder[o.id] || [],
         customer: {
-          name:  [p?.first_name, p?.last_name].filter(Boolean).join(" ") || null,
+          name:  [p?.first_name, p?.last_name].filter(Boolean).join(" ") || meta.full_name || meta.name || null,
           phone: p?.phone || null,
-          email,
+          email: p?.email || au?.email || null,
         },
       };
-    }));
+    });
     return Response.json({ orders: withCustomer });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

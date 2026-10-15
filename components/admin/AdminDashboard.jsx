@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import OrdersTable from "@/components/admin/OrdersTable";
+import { itemsOf } from "@/lib/orderRows";
 import { BG, CARD, ACCENT, ACCENT2, TEXT, MUTED, BORDER } from "@/lib/constants";
 
 const FLOW = [
@@ -38,13 +40,13 @@ function mapsUrl(o) {
   return `https://www.google.com/maps/search/?api=1&query=${q}`;
 }
 
-function OrderCard({ order, onChange }) {
-  const [open,   setOpen]   = useState(isActive(order));
+function OrderCard({ order, onChange, startOpen }) {
+  const [open,   setOpen]   = useState(startOpen ?? isActive(order));
   const [total,  setTotal]  = useState(order.final_total ?? "");
   const [busy,   setBusy]   = useState(false);
   const [error,  setError]  = useState("");
   const [gotItems, setGotItems] = useState({});
-  const items = order.items?.length ? order.items : (order.ingredients || []).map(i => ({ ingredient: i.name, qty: i.qty }));
+  const items = itemsOf(order);
   const idx = FLOW.findIndex(s => s.id === order.status);
   const next = idx >= 0 ? FLOW[idx + 1] : null;
   const estimate = items.reduce((s, i) => s + (i.product?.price || 0), 0);
@@ -120,6 +122,8 @@ export default function AdminDashboard() {
   const [state,   setState]   = useState("loading"); // loading | signedout | forbidden | ready | error
   const [orders,  setOrders]  = useState([]);
   const [filter,  setFilter]  = useState("active");
+  const [tab,     setTab]     = useState("cards"); // cards | table
+  const [focusId, setFocusId] = useState(null);
   const [message, setMessage] = useState("");
   const [sharing, setSharing] = useState(false);
   const [shareInfo, setShareInfo] = useState("");
@@ -168,9 +172,11 @@ export default function AdminDashboard() {
     setSharing(true); setShareInfo("Starting…");
   };
 
-  const shown = orders.filter(o => filter === "all" ? true : filter === "active" ? isActive(o) : o.status === filter);
+  const shown = focusId
+    ? orders.filter(o => o.id === focusId)
+    : orders.filter(o => filter === "all" ? true : filter === "active" ? isActive(o) : o.status === filter);
   const enRoute = orders.filter(o => o.status === "out_for_delivery").length;
-  const center = { maxWidth: 640, margin: "0 auto", padding: "24px 16px 80px" };
+  const center = { maxWidth: tab === "table" ? 1280 : 640, margin: "0 auto", padding: "24px 16px 80px" };
 
   if (state === "loading") return <div style={{ ...center, color: MUTED }}>Loading…</div>;
   if (state === "signedout") return <div style={center}><h1>mise. admin</h1><p>Sign in first, then come back to this page.</p><Link href="/" style={{ color: ACCENT2, fontWeight: 700 }}>Go to sign in →</Link></div>;
@@ -185,6 +191,15 @@ export default function AdminDashboard() {
           <button onClick={load} style={{ padding: "8px 12px", borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD, cursor: "pointer", fontFamily: "inherit" }}>Refresh</button>
         </div>
 
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {[["cards", "Fulfillment"], ["table", "Spreadsheet"]].map(([id, label]) => (
+            <button key={id} onClick={() => { setTab(id); setFocusId(null); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: tab === id ? TEXT : "transparent", color: tab === id ? "#fff" : TEXT, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+          ))}
+        </div>
+
+        {tab === "table" && <OrdersTable orders={orders} onOpen={(id) => { setFocusId(id); setTab("cards"); }} />}
+
+        {tab === "cards" && (<>
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 14, marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <div>
@@ -206,8 +221,10 @@ export default function AdminDashboard() {
           ))}
         </div>
 
+        {focusId && <button onClick={() => { setFocusId(null); setTab("table"); }} style={{ marginBottom: 12, padding: "8px 14px", borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>← Back to spreadsheet</button>}
         {shown.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 40 }}>No orders here.</div>}
-        {shown.map(o => <OrderCard key={o.id} order={o} onChange={(u) => setOrders(prev => prev.map(p => p.id === u.id ? { ...p, ...u } : p))} />)}
+        {shown.map(o => <OrderCard key={o.id} order={o} startOpen={focusId ? true : undefined} onChange={(u) => setOrders(prev => prev.map(p => p.id === u.id ? { ...p, ...u } : p))} />)}
+        </>)}
       </div>
     </div>
   );

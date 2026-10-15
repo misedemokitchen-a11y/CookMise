@@ -274,6 +274,22 @@ export function useUserData(user) {
       console.error("placeOrder failed:", error);
       return null;
     }
+    // One row per grocery item — the clean, exportable copy of the shopping list.
+    if (items?.length) {
+      const { error: itemsError } = await supabase.from("order_items").insert(
+        items.map((it, i) => ({
+          order_id:      data.id,
+          position:      i,
+          ingredient:    it.ingredient,
+          qty:           it.qty ?? null,
+          product_name:  it.product?.name ?? null,
+          product_brand: it.product?.brand ?? null,
+          price:         it.product?.price ?? null,
+          image:         it.product?.image ?? null,
+        }))
+      );
+      if (itemsError) console.error("order_items insert failed (order still saved via items json):", itemsError);
+    }
     setOrderHistory(prev => [data, ...prev]);
     await clearCart();
     return data;

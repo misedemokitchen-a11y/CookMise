@@ -11,6 +11,7 @@ import { ExploreScreen } from "@/components/screens/ExploreScreen";
 import { RecipeScreen } from "@/components/screens/RecipeScreen";
 import { OrderScreen } from "@/components/screens/OrderScreen";
 import { SavedScreen } from "@/components/screens/SavedScreen";
+import { OrdersScreen } from "@/components/screens/OrdersScreen";
 import { SettingsScreen } from "@/components/screens/SettingsScreen";
 import { recipes } from "@/data/recipes";
 
@@ -108,12 +109,13 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sessi
   const showNav = !["login"].includes(screen);
 
   const renderScreen = () => {
-    if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} addresses={addresses} addAddress={addAddress} updateAddress={updateAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} />;
+    if (showSettings) return <SettingsScreen onClose={() => setShowSettings(false)} user={user} profile={profile} setProfile={setProfile} updateProfile={updateProfile} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} addresses={addresses} addAddress={addAddress} updateAddress={updateAddress} deleteAddress={deleteAddress} reorderAddresses={reorderAddresses} onOpenOrders={() => handleSetScreen("orders")} />;
     switch (screen) {
       case "home":    return <HomeScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} showSettings={showSettings} setShowSettings={setShowSettings} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} user={user} profile={profile} setProfile={setProfile} />;
       case "explore": return <ExploreScreen setScreen={handleSetScreen} setSelectedRecipe={setSelectedRecipe} resetRef={exploreResetRef} selectedCuisine={exploreCuisine} setSelectedCuisine={setExploreCuisine} />;
       case "recipe":  return <RecipeScreen recipe={selectedRecipe} setScreen={handleSetScreen} onOrder={handleGoToOrder} savedRecipes={savedRecipes} toggleSaved={toggleSaved} goBack={handleGoBack} />;
       case "order":   return <OrderScreen orderRecipes={cartRecipes} setOrderRecipes={setCartRecipes} setScreen={handleSetScreen} profile={profile} placeOrder={placeOrder} defaultAddress={defaultAddress} />;
+      case "orders":  return <OrdersScreen user={user} onBack={handleGoBack} setScreen={handleSetScreen} />;
       case "saved":   return <SavedScreen savedRecipes={savedRecipes} toggleSaved={toggleSaved} setSelectedRecipe={setSelectedRecipe} setScreen={handleSetScreen} />;
       default:        return null;
     }

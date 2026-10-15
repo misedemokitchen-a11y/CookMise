@@ -628,7 +628,7 @@ function ProfileScreen({ onBack, user, profile, setProfile, updateProfile }) {
 }
 
 // ── SettingsScreen ────────────────────────────────────────────────────────────
-export function SettingsScreen({ onClose, user, profile, setProfile, updateProfile, dietaryPrefs, saveDiet, addresses, addAddress, updateAddress, deleteAddress, reorderAddresses }) {
+export function SettingsScreen({ onClose, user, profile, setProfile, updateProfile, dietaryPrefs, saveDiet, addresses, addAddress, updateAddress, deleteAddress, reorderAddresses, onOpenOrders }) {
   const [subScreen, setSubScreen] = useState(null);
 
   if (subScreen === "diet")      return <DietScreen      onBack={() => setSubScreen(null)} dietaryPrefs={dietaryPrefs} saveDiet={saveDiet} />;
@@ -638,6 +638,7 @@ export function SettingsScreen({ onClose, user, profile, setProfile, updateProfi
   const sections = [
     { title: "Account", items: [
       { icon: "👤", label: "Profile",       desc: "Name, photo, username",                      onTap: () => setSubScreen("profile") },
+      { icon: "📦", label: "My Orders",     desc: "Track status & delivery",                    onTap: () => onOpenOrders?.() },
       { icon: "📍", label: "Addresses",     desc: "Delivery addresses & default",               onTap: () => setSubScreen("addresses") },
       { icon: "🔔", label: "Notifications", desc: "Meal reminders, updates" },
       { icon: "🔒", label: "Privacy",       desc: "Data & permissions" },

@@ -249,26 +249,33 @@ export function useUserData(user) {
     if (data) setOrderHistory(data);
   };
 
-  const placeOrder = async ({ orderRecipes, ingredients, address, store, deliveryType, subtotal, total }) => {
-    const { data } = await supabase
+  const placeOrder = async ({ orderRecipes, ingredients, items, address, unit, notes, lat, lng, store, deliveryType, subtotal, total }) => {
+    const { data, error } = await supabase
       .from("orders")
       .insert({
-        user_id:       user.id,
-        recipes:       orderRecipes.map(r => ({ id: r.id, name: r.name })),
+        user_id:        user.id,
+        recipes:        orderRecipes.map(r => ({ id: r.id, name: r.name })),
         ingredients,
+        items,
         address,
-        store:         store?.name,
-        delivery_type: deliveryType,
+        delivery_unit:  unit || null,
+        delivery_notes: notes || null,
+        delivery_lat:   lat ?? null,
+        delivery_lng:   lng ?? null,
+        store,
+        delivery_type:  deliveryType,
         subtotal,
         total,
-        status:        "confirmed",
+        status:         "confirmed",
       })
       .select()
       .single();
-    if (data) {
-      setOrderHistory(prev => [data, ...prev]);
-      await clearCart();
+    if (error || !data) {
+      console.error("placeOrder failed:", error);
+      return null;
     }
+    setOrderHistory(prev => [data, ...prev]);
+    await clearCart();
     return data;
   };
 

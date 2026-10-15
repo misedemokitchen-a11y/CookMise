@@ -156,6 +156,9 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   const [krogerResults,      setKrogerResults]      = useState({});
   const [swapTarget,         setSwapTarget]         = useState(null); // ingredient name whose swap sheet is open
   const [userCoords,         setUserCoords]         = useState(null);
+  const [addressMeta,        setAddressMeta]        = useState(defaultAddress ? { unit: defaultAddress.unit, notes: defaultAddress.notes } : null); // unit/notes only apply to the saved address
+  const [placing,            setPlacing]            = useState(false);
+  const [orderError,         setOrderError]         = useState("");
   const addressInputRef = useRef(null);
   const debounceRef     = useRef(null);
 
@@ -228,12 +231,14 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
 
   const handleAddressChange = (value) => {
     setDeliveryAddress(value);
+    setAddressMeta(null);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(value), 250);
   };
 
   const selectSuggestion = (desc) => {
     setDeliveryAddress(desc);
+    setAddressMeta(null);
     setSuggestions([]);
     setEditingAddress(false);
     findStoresAndIngredients(desc);
@@ -299,20 +304,39 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
   const selectedStore    = krogerStores[selected];
 
   const handleConfirmOrder = async () => {
+    if (placing) return;
+    setPlacing(true); setOrderError("");
     const checkedIngredients = orderRecipes.flatMap(r =>
       (r.ingredients ?? []).filter((ing, idx) =>
         checked[`${r.id}-${idx}`] !== false && krogerResults?.[ing.name]?.found !== false
       )
     );
-    await placeOrder?.({
+    // What the shopper needs to buy: each checked ingredient + the product the customer chose.
+    const items = checkedIngredients.map(ing => {
+      const r = krogerResults?.[ing.name];
+      const p = r?.options?.[r.selectedIndex];
+      return {
+        ingredient: ing.name,
+        qty:        ing.qty,
+        product:    p ? { name: p.name, brand: p.brand, price: p.price, image: p.image } : null,
+      };
+    });
+    const placed = await placeOrder?.({
       orderRecipes,
-      ingredients:  checkedIngredients,
+      ingredients:  checkedIngredients.map(i => ({ name: i.name, qty: i.qty })),
+      items,
       address:      deliveryAddress,
+      unit:         addressMeta?.unit,
+      notes:        addressMeta?.notes,
+      lat:          userCoords?.lat,
+      lng:          userCoords?.lng,
       store:        selectedStore?.name,
       deliveryType: "delivery",
       subtotal:     krogerTotal,
       total:        krogerTotal,
     });
+    setPlacing(false);
+    if (!placed) { setOrderError("We couldn't place your order. Please try again."); return; }
     setConfirmed(true);
   };
 
@@ -322,11 +346,10 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
         <div style={{ width: 80, height: 80, borderRadius: 40, background: ACCENT2 + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, marginBottom: 20 }}>✅</div>
         <h2 style={{ fontSize: 26, fontWeight: 800, color: TEXT, margin: "0 0 8px", fontFamily: "Georgia, serif" }}>Order Placed!</h2>
         <p style={{ color: MUTED, fontSize: 15, lineHeight: 1.5, margin: "0 0 28px" }}>
-          Your ingredients for {orderRecipes.length} {orderRecipes.length === 1 ? "recipe" : "recipes"} are on their way.
+          Your order for {orderRecipes.length} {orderRecipes.length === 1 ? "recipe" : "recipes"} is confirmed. We’ll update you as it’s shopped and delivered.
         </p>
         <div style={{ background: CARD, borderRadius: 20, padding: "18px 24px", width: "100%", border: `1px solid ${BORDER}`, marginBottom: 20 }}>
-          <div style={{ fontSize: 32, fontWeight: 800, color: ACCENT2, marginBottom: 4 }}>45 min</div>
-          <div style={{ fontSize: 13, color: MUTED }}>Estimated arrival</div>
+          <div style={{ fontSize: 13, color: MUTED }}>Track status and your driver live under My Orders</div>
           <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>📍 {selectedStore?.name}</div>
           <div style={{ marginTop: 6, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
             {orderRecipes.map(r => (
@@ -334,6 +357,9 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
             ))}
           </div>
         </div>
+        <button onClick={() => { setConfirmed(false); setScreen("orders"); }} style={{ width: "100%", padding: "16px", borderRadius: 18, background: ACCENT2, color: "#fff", border: "none", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", marginBottom: 10 }}>
+          Track order
+        </button>
         <button onClick={() => { setConfirmed(false); setScreen("home"); }} style={{ width: "100%", padding: "16px", borderRadius: 18, background: ACCENT, color: "#fff", border: "none", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
           Back to Home
         </button>
@@ -465,11 +491,12 @@ export function OrderScreen({ orderRecipes, setOrderRecipes, setScreen, profile,
           {krogerStores.length > 0 && (
             <button
               onClick={handleConfirmOrder}
-              disabled={loadingIngredients}
+              disabled={loadingIngredients || placing}
               style={{ width: "100%", marginTop: 20, padding: "16px", borderRadius: 18, background: loadingIngredients ? MUTED : ACCENT2, color: "#fff", border: "none", fontSize: 15, fontWeight: 800, cursor: loadingIngredients ? "default" : "pointer", fontFamily: "inherit", boxShadow: `0 4px 14px ${ACCENT2}55` }}>
-              {loadingIngredients ? "Finding ingredients…" : `✓ Confirm Order · $${krogerTotal.toFixed(2)}`}
+              {loadingIngredients ? "Finding ingredients…" : placing ? "Placing order…" : `✓ Confirm Order · $${krogerTotal.toFixed(2)}`}
             </button>
           )}
+          {orderError && <div style={{ color: "#C62828", fontSize: 13, marginTop: 10, textAlign: "center" }}>{orderError}</div>}
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </>)}

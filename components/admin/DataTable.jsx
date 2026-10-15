@@ -37,10 +37,11 @@ export default function DataTable({ columns, rows, onRowClick, defaultSort, empt
                 onMouseEnter={e => (e.currentTarget.style.background = BG)} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
               {columns.map(c => {
                 const v = c.value(r);
+                const shown = c.display ? c.display(r) : v;
                 const right = c.money || c.align === "right";
                 return (
                   <td key={c.key} title={String(v)} style={{ ...td, textAlign: right ? "right" : "left", ...(c.key === "status" ? { fontWeight: 700, color: r.status === "canceled" ? "#C62828" : ACCENT2 } : {}) }}>
-                    {c.money && v !== "" && v != null ? `$${v}` : v}
+                    {c.money && v !== "" && v != null ? `$${v}` : shown}
                   </td>
                 );
               })}

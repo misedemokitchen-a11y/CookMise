@@ -11,6 +11,7 @@ const money = (n) => (n == null ? "" : Number(n).toFixed(2));
 
 const CUSTOMER_COLS = [
   { key: "name",     label: "Customer",     value: c => c.name || c.email || "Unknown", sort: c => (c.name || c.email || "").toLowerCase() },
+  { key: "id",       label: "Customer ID",  value: c => c.id, display: c => String(c.id).slice(0, 8) },
   { key: "email",    label: "Email",        value: c => c.email, sort: c => c.email.toLowerCase() },
   { key: "phone",    label: "Phone",        value: c => c.phone },
   { key: "orders",   label: "Orders",       value: c => c.orders, align: "right" },
@@ -122,7 +123,7 @@ export default function AnalyticsTab({ orders, onOpen }) {
         {VIEWS.map(v => (
           <button key={v.id} onClick={() => setView(v.id)} style={{ ...btn, background: view === v.id ? TEXT : CARD, color: view === v.id ? "#fff" : TEXT, borderColor: view === v.id ? TEXT : BORDER }}>{v.label}</button>
         ))}
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search customer, address, recipe, ingredient…" style={{ ...input, flex: "1 1 220px" }} />
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search customer, ID, address, recipe, ingredient…" style={{ ...input, flex: "1 1 220px" }} />
         <button style={btn} onClick={exportCurrent}>⬇ {VIEWS.find(v => v.id === view).label} CSV</button>
         <button style={btn} onClick={exportItems}>⬇ Items CSV</button>
       </div>

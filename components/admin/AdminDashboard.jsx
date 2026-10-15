@@ -83,6 +83,7 @@ function OrderCard({ order, onChange, startOpen }) {
             {order.delivery_notes && <div>📝 {order.delivery_notes}</div>}
             {order.customer?.phone && <div>📞 <a href={`tel:${order.customer.phone}`} style={{ color: ACCENT2 }}>{order.customer.phone}</a></div>}
             {order.customer?.email && <div style={{ color: MUTED }}>✉️ {order.customer.email}</div>}
+            <div style={{ color: MUTED, fontSize: 12 }}>🆔 Customer ID: <span style={{ userSelect: "all", fontFamily: "monospace" }}>{order.user_id}</span></div>
             <div>🛒 <b>{order.store || "Store not set"}</b></div>
           </div>
 
